@@ -1,6 +1,9 @@
 package dpshim
 
 import (
+	"sync"
+
+	"github.com/Azure/azure-container-networking/npm/pkg/controlplane"
 	"github.com/Azure/azure-container-networking/npm/pkg/dataplane"
 	"github.com/Azure/azure-container-networking/npm/pkg/dataplane/ipsets"
 	"github.com/Azure/azure-container-networking/npm/pkg/dataplane/policies"
@@ -9,15 +12,18 @@ import (
 
 // TODO setting this up to unblock another workitem
 type DPShim struct {
-	outChannel chan *protos.Events
+	outChannel  chan *protos.Events
+	setCache    map[string]*controlplane.ControllerIPSets
+	policyCache map[string]*policies.NPMNetworkPolicy
+	sync.Mutex
 }
 
 func NewDPSim(outChannel chan *protos.Events) *DPShim {
-	return &DPShim{outChannel: outChannel}
-}
-
-func (dp *DPShim) InitializeDataPlane() error {
-	return nil
+	return &DPShim{
+		outChannel:  outChannel,
+		setCache:    make(map[string]*controlplane.ControllerIPSets),
+		policyCache: make(map[string]*policies.NPMNetworkPolicy),
+	}
 }
 
 func (dp *DPShim) ResetDataPlane() error {
@@ -29,6 +35,21 @@ func (dp *DPShim) GetIPSet(setName string) *ipsets.IPSet {
 }
 
 func (dp *DPShim) CreateIPSets(setNames []*ipsets.IPSetMetadata) {
+	dp.Lock()
+	defer dp.Unlock()
+	for _, set := range setNames {
+		dp.createIPSets(set)
+	}
+}
+
+func (dp *DPShim) createIPSets(set *ipsets.IPSetMetadata) {
+	setName := set.GetPrefixName()
+
+	if _, ok := dp.setCache[setName]; ok {
+		return
+	}
+
+	dp.setCache[setName] = controlplane.NewControllerIPSets(set)
 }
 
 func (dp *DPShim) DeleteIPSet(setMetadata *ipsets.IPSetMetadata) {
