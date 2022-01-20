@@ -1,6 +1,7 @@
 package dpshim
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/Azure/azure-container-networking/npm/pkg/protos"
 )
 
+var ErrChannelUnset = errors.New("channel must be set")
+
 // TODO setting this up to unblock another workitem
 type DPShim struct {
 	outChannel  chan *protos.Events
@@ -19,17 +22,23 @@ type DPShim struct {
 	sync.Mutex
 }
 
-func NewDPSim(outChannel chan *protos.Events) *DPShim {
+func NewDPSim(outChannel chan *protos.Events) (*DPShim, error) {
+	if outChannel == nil {
+		return nil, fmt.Errorf("out channel must be set: %w", ErrChannelUnset)
+	}
+
 	return &DPShim{
 		outChannel:  outChannel,
 		setCache:    make(map[string]*controlplane.ControllerIPSets),
 		policyCache: make(map[string]*policies.NPMNetworkPolicy),
-	}
+	}, nil
 }
 
 func (dp *DPShim) ResetDataPlane() error {
 	return nil
 }
+
+func (dp *DPShim) RunPeriodicTasks() {}
 
 func (dp *DPShim) GetIPSet(setName string) *ipsets.IPSet {
 	return nil
