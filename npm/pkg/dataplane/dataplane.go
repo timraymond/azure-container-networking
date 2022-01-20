@@ -70,12 +70,6 @@ func NewDataPlane(nodeName string, ioShim *common.IOShim, cfg *Config, stopChann
 	return dp, nil
 }
 
-// InitializeDataPlane helps in setting up dataplane for NPM
-func (dp *DataPlane) InitializeDataPlane() error {
-	// TODO deprecate this function
-	return nil
-}
-
 // ResetDataPlane cleans the NPM sets and policies in the dataplane and performs initialization.
 // TODO rename this function to BootupDataplane
 func (dp *DataPlane) ResetDataPlane() error {

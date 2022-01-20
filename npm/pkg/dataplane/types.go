@@ -6,7 +6,6 @@ import (
 )
 
 type GenericDataplane interface {
-	InitializeDataPlane() error
 	ResetDataPlane() error
 	RunPeriodicTasks()
 	GetIPSet(setName string) *ipsets.IPSet
