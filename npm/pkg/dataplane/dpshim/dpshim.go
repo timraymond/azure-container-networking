@@ -1,6 +1,7 @@
 package dpshim
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/Azure/azure-container-networking/npm/pkg/controlplane"
@@ -34,6 +35,11 @@ func (dp *DPShim) GetIPSet(setName string) *ipsets.IPSet {
 	return nil
 }
 
+func (dp *DPShim) setExists(setName string) bool {
+	_, ok := dp.setCache[setName]
+	return ok
+}
+
 func (dp *DPShim) CreateIPSets(setNames []*ipsets.IPSetMetadata) {
 	dp.Lock()
 	defer dp.Unlock()
@@ -45,7 +51,7 @@ func (dp *DPShim) CreateIPSets(setNames []*ipsets.IPSetMetadata) {
 func (dp *DPShim) createIPSets(set *ipsets.IPSetMetadata) {
 	setName := set.GetPrefixName()
 
-	if _, ok := dp.setCache[setName]; ok {
+	if dp.setExists(setName) {
 		return
 	}
 
@@ -53,21 +59,45 @@ func (dp *DPShim) createIPSets(set *ipsets.IPSetMetadata) {
 }
 
 func (dp *DPShim) DeleteIPSet(setMetadata *ipsets.IPSetMetadata) {
+	dp.Lock()
+	defer dp.Unlock()
+	dp.deleteIPSet(setMetadata)
+}
+
+func (dp *DPShim) deleteIPSet(setMetadata *ipsets.IPSetMetadata) {
+	set, ok := dp.setCache[setMetadata.GetPrefixName()]
+	if !ok {
+		return
+	}
+
+	if set.HasReferences() {
+		return
+	}
+
+	delete(dp.setCache, setMetadata.GetPrefixName())
 }
 
 func (dp *DPShim) AddToSets(setNames []*ipsets.IPSetMetadata, podMetadata *dataplane.PodMetadata) error {
+	dp.Lock()
+	defer dp.Unlock()
 	return nil
 }
 
 func (dp *DPShim) RemoveFromSets(setNames []*ipsets.IPSetMetadata, podMetadata *dataplane.PodMetadata) error {
+	dp.Lock()
+	defer dp.Unlock()
 	return nil
 }
 
 func (dp *DPShim) AddToLists(listName, setNames []*ipsets.IPSetMetadata) error {
+	dp.Lock()
+	defer dp.Unlock()
 	return nil
 }
 
 func (dp *DPShim) RemoveFromList(listName *ipsets.IPSetMetadata, setNames []*ipsets.IPSetMetadata) error {
+	dp.Lock()
+	defer dp.Unlock()
 	return nil
 }
 
@@ -76,13 +106,60 @@ func (dp *DPShim) ApplyDataPlane() error {
 }
 
 func (dp *DPShim) AddPolicy(networkpolicies *policies.NPMNetworkPolicy) error {
-	return nil
+	var err error
+	// apply dataplane after syncing
+	defer func() {
+		dperr := dp.ApplyDataPlane()
+		if dperr != nil {
+			err = fmt.Errorf("failed with error %w, apply failed with %v", err, dperr)
+		}
+	}()
+	dp.Lock()
+	defer dp.Unlock()
+
+	if dp.policyExists(networkpolicies.PolicyKey) {
+		return nil
+	}
+	dp.policyCache[networkpolicies.PolicyKey] = networkpolicies
+	return err
 }
 
 func (dp *DPShim) RemovePolicy(policyName string) error {
-	return nil
+	var err error
+	// apply dataplane after syncing
+	defer func() {
+		dperr := dp.ApplyDataPlane()
+		if dperr != nil {
+			err = fmt.Errorf("failed with error %w, apply failed with %v", err, dperr)
+		}
+	}()
+
+	dp.Lock()
+	defer dp.Unlock()
+	// keeping err different so we can catch the defer func err
+	delete(dp.policyCache, policyName)
+	return err
 }
 
 func (dp *DPShim) UpdatePolicy(networkpolicies *policies.NPMNetworkPolicy) error {
-	return nil
+	var err error
+	// apply dataplane after syncing
+	defer func() {
+		dperr := dp.ApplyDataPlane()
+		if dperr != nil {
+			err = fmt.Errorf("failed with error %w, apply failed with %v", err, dperr)
+		}
+	}()
+
+	dp.Lock()
+	defer dp.Unlock()
+
+	dp.policyCache[networkpolicies.PolicyKey] = networkpolicies
+
+	return err
+}
+
+func (dp *DPShim) policyExists(policyName string) bool {
+	_, ok := dp.policyCache[policyName]
+	return ok
 }
