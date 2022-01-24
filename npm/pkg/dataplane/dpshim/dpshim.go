@@ -12,7 +12,7 @@ import (
 	"github.com/Azure/azure-container-networking/npm/pkg/dataplane/policies"
 	"github.com/Azure/azure-container-networking/npm/pkg/protos"
 	npmerrors "github.com/Azure/azure-container-networking/npm/util/errors"
-	"github.com/Azure/azure-container-networking/vendor/k8s.io/klog"
+	"k8s.io/klog"
 )
 
 var ErrChannelUnset = errors.New("channel must be set")
