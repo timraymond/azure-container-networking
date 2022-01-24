@@ -6,10 +6,12 @@ import (
 )
 
 const (
-	IpsetApply   string = "IPSETAPPLY"
-	IpsetRemove  string = "IPSETREMOVE"
-	PolicyApply  string = "POLICYAPPLY"
-	PolicyRemove string = "POLICYREMOVE"
+	IpsetApply      string = "IPSETAPPLY"
+	IpsetRemove     string = "IPSETREMOVE"
+	PolicyApply     string = "POLICYAPPLY"
+	PolicyRemove    string = "POLICYREMOVE"
+	ListReference   string = "LISTREFERENCE"
+	PolicyReference string = "POLICYREFERENCE"
 )
 
 // ControllerIPSets is used in fan-out design for controller pod to calculate
@@ -21,10 +23,12 @@ type ControllerIPSets struct {
 	IPPodMetadata map[string]*dp.PodMetadata
 	// MemberIPSets is used for listMaps to store child IP Sets
 	MemberIPSets map[string]*ipsets.IPSetMetadata
-	// ipsetReferCount keeps track of how many lists in the cache refer to this ipset
-	ipsetReferCount int
+	// ipsetReference keeps track of how many lists in the cache refer to this ipset
+	ipsetReference map[string]struct{}
 	// NetPolReference holds networkpolicy names where this IPSet
 	// is being referred as part of rules
+	// NetpolReference is not used currently, depending on testing we may decide to keep it
+	// or delete it
 	NetPolReference map[string]struct{}
 }
 
@@ -41,23 +45,28 @@ func (c *ControllerIPSets) GetMetadata() *ipsets.IPSetMetadata {
 	return c.IPSetMetadata
 }
 
-// IncIPSetReferCount increments the ipset refer count
-func (c *ControllerIPSets) IncIPSetReferCount() {
-	c.ipsetReferCount++
-}
-
-// DecIPSetReferCount decrements the ipset refer count
-func (c *ControllerIPSets) DecIPSetReferCount() {
-	if c.ipsetReferCount == 0 {
-		return
-	}
-	c.ipsetReferCount--
-}
-
 // DecIPSetReferCount decrements the ipset refer count
 func (c *ControllerIPSets) HasReferences() bool {
-	if c.ipsetReferCount >= 0 || len(c.NetPolReference) > 0 {
+	if len(c.ipsetReference) > 0 || len(c.NetPolReference) > 0 {
 		return true
 	}
 	return false
+}
+
+func (c *ControllerIPSets) AddReference(referenceName, referenceType string) {
+	switch referenceType {
+	case ListReference:
+		c.ipsetReference[referenceName] = struct{}{}
+	case PolicyReference:
+		c.NetPolReference[referenceName] = struct{}{}
+	}
+}
+
+func (c *ControllerIPSets) DeleteReference(referenceName, referenceType string) {
+	switch referenceType {
+	case ListReference:
+		delete(c.ipsetReference, referenceName)
+	case PolicyReference:
+		delete(c.NetPolReference, referenceName)
+	}
 }

@@ -86,7 +86,7 @@ func TestPolicyApplyEvent(t *testing.T) {
 	dp.EXPECT().ApplyDataPlane().Times(1)
 
 	inputChan := make(chan *protos.Events)
-	payload, err := controlplane.EncodeNPMNetworkPolicy(testNetPol)
+	payload, err := controlplane.EncodeNPMNetworkPolicies([]*policies.NPMNetworkPolicy{testNetPol})
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -97,7 +97,7 @@ func TestPolicyApplyEvent(t *testing.T) {
 		inputChan <- &protos.Events{
 			Payload: map[string]*protos.GoalState{
 				controlplane.PolicyApply: {
-					Data: [][]byte{payload.Bytes()},
+					Data: payload.Bytes(),
 				},
 			},
 		}
@@ -202,13 +202,11 @@ func TestIPSetsApplyUpdateMembers(t *testing.T) {
 func getGoalStateForControllerSets(t *testing.T, sets []*controlplane.ControllerIPSets) map[string]*protos.GoalState {
 	goalState := map[string]*protos.GoalState{
 		controlplane.IpsetApply: {
-			Data: [][]byte{},
+			Data: []byte{},
 		},
 	}
-	for _, set := range sets {
-		payload, err := controlplane.EncodeControllerIPSet(set)
-		assert.NoError(t, err)
-		goalState[controlplane.IpsetApply].Data = append(goalState[controlplane.IpsetApply].Data, payload.Bytes())
-	}
+	payload, err := controlplane.EncodeControllerIPSets(sets)
+	assert.NoError(t, err)
+	goalState[controlplane.IpsetApply].Data = payload.Bytes()
 	return goalState
 }

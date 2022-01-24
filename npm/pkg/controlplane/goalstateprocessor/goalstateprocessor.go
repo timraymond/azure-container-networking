@@ -147,13 +147,13 @@ func (gsp *GoalStateProcessor) process(inputEvent *protos.Events) {
 }
 
 func (gsp *GoalStateProcessor) processIPSetsApplyEvent(goalState *protos.GoalState) error {
-	for _, gs := range goalState.GetData() {
-		payload := bytes.NewBuffer(gs)
-		ipset, err := cp.DecodeControllerIPSet(payload)
-		if err != nil {
-			return npmerrors.SimpleErrorWrapper("failed to decode IPSet apply event", err)
-		}
+	payload := bytes.NewBuffer(goalState.GetData())
+	payloadIPSets, err := cp.DecodeControllerIPSets(payload)
+	if err != nil {
+		return npmerrors.SimpleErrorWrapper("failed to decode IPSet apply event", err)
+	}
 
+	for _, ipset := range payloadIPSets {
 		if ipset == nil {
 			klog.Warningf("Empty IPSet apply event")
 			continue
@@ -251,12 +251,13 @@ func (gsp *GoalStateProcessor) applyLists(ipSet *cp.ControllerIPSets, cachedIPSe
 }
 
 func (gsp *GoalStateProcessor) processIPSetsRemoveEvent(goalState *protos.GoalState) error {
-	for _, gs := range goalState.GetData() {
-		payload := bytes.NewBuffer(gs)
-		ipsetName, err := cp.DecodeString(payload)
-		if err != nil {
-			return npmerrors.SimpleErrorWrapper("failed to decode IPSet remove event", err)
-		}
+	payload := bytes.NewBuffer(goalState.GetData())
+	ipsetNames, err := cp.DecodeStrings(payload)
+	if err != nil {
+		return npmerrors.SimpleErrorWrapper("failed to decode IPSet remove event", err)
+	}
+
+	for _, ipsetName := range ipsetNames {
 		if ipsetName == "" {
 			klog.Warningf("Empty IPSet remove event")
 			continue
@@ -275,13 +276,13 @@ func (gsp *GoalStateProcessor) processIPSetsRemoveEvent(goalState *protos.GoalSt
 }
 
 func (gsp *GoalStateProcessor) processPolicyApplyEvent(goalState *protos.GoalState) error {
-	for _, gs := range goalState.GetData() {
-		payload := bytes.NewBuffer(gs)
-		netpol, err := cp.DecodeNPMNetworkPolicy(payload)
-		if err != nil {
-			return npmerrors.SimpleErrorWrapper("failed to decode Policy apply event", err)
-		}
+	payload := bytes.NewBuffer(goalState.GetData())
+	netpols, err := cp.DecodeNPMNetworkPolicies(payload)
+	if err != nil {
+		return npmerrors.SimpleErrorWrapper("failed to decode Policy apply event", err)
+	}
 
+	for _, netpol := range netpols {
 		if netpol == nil {
 			klog.Warningf("Empty Policy apply event")
 			continue
@@ -298,12 +299,12 @@ func (gsp *GoalStateProcessor) processPolicyApplyEvent(goalState *protos.GoalSta
 }
 
 func (gsp *GoalStateProcessor) processPolicyRemoveEvent(goalState *protos.GoalState) error {
-	for _, gs := range goalState.GetData() {
-		payload := bytes.NewBuffer(gs)
-		netpolName, err := cp.DecodeString(payload)
-		if err != nil {
-			return npmerrors.SimpleErrorWrapper("failed to decode Policy remove event", err)
-		}
+	payload := bytes.NewBuffer(goalState.GetData())
+	netpolNames, err := cp.DecodeStrings(payload)
+	if err != nil {
+		return npmerrors.SimpleErrorWrapper("failed to decode Policy remove event", err)
+	}
+	for _, netpolName := range netpolNames {
 		klog.Infof("Processing %s Policy remove event", netpolName)
 
 		if netpolName == "" {

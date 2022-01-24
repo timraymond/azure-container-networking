@@ -425,12 +425,6 @@ func (iMgr *IPSetManager) checkForListMemberUpdateErrors(listMetadata, memberMet
 		if list.Kind != ListSet {
 			return npmerrors.Errorf(npmErrorString, false, fmt.Sprintf("ipset %s is not a list set", prefixedListName))
 		}
-		for _, memberMetadata := range memberMetadatas {
-			memberName := memberMetadata.GetPrefixName()
-			if prefixedListName == memberName {
-				return npmerrors.Errorf(npmErrorString, false, fmt.Sprintf("ipset %s cannot be added to itself", prefixedListName))
-			}
-		}
 	}
 
 	for _, memberMetadata := range memberMetadatas {

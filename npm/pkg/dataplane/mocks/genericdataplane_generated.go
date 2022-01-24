@@ -162,17 +162,17 @@ func (mr *MockGenericDataplaneMockRecorder) RemoveFromSets(setNames, podMetadata
 }
 
 // RemovePolicy mocks base method.
-func (m *MockGenericDataplane) RemovePolicy(policyName string) error {
+func (m *MockGenericDataplane) RemovePolicy(PolicyKey string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemovePolicy", policyName)
+	ret := m.ctrl.Call(m, "RemovePolicy", PolicyKey)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RemovePolicy indicates an expected call of RemovePolicy.
-func (mr *MockGenericDataplaneMockRecorder) RemovePolicy(policyName interface{}) *gomock.Call {
+func (mr *MockGenericDataplaneMockRecorder) RemovePolicy(PolicyKey interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePolicy", reflect.TypeOf((*MockGenericDataplane)(nil).RemovePolicy), policyName)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePolicy", reflect.TypeOf((*MockGenericDataplane)(nil).RemovePolicy), PolicyKey)
 }
 
 // ResetDataPlane mocks base method.
