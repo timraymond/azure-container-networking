@@ -120,6 +120,49 @@ func TestAddToList(t *testing.T) {
 	assert.Equal(t, 2, len(sets))
 }
 
+func TestRemoveFromList(t *testing.T) {
+	outChan := make(chan *protos.Events)
+	dp, err := NewDPSim(outChan)
+	assert.Nil(t, err)
+
+	dp.CreateIPSets([]*ipsets.IPSetMetadata{testKeyPodSet, testNestedKeyPodSet})
+
+	err = dp.AddToLists([]*ipsets.IPSetMetadata{testNestedKeyPodSet}, []*ipsets.IPSetMetadata{testKeyPodSet})
+	require.NoError(t, err)
+
+	set := dp.getIPSet(testNestedKeyPodCPSet.GetPrefixName())
+	assert.NotNil(t, set)
+	assert.Equal(t, testNestedKeyPodCPSet.GetPrefixName(), set.GetPrefixName())
+	assert.Equal(t, util.GetHashedName(testNestedKeyPodCPSet.GetPrefixName()), set.GetHashedName())
+	assert.Equal(t, 1, len(set.MemberIPSets))
+	assert.Equal(t, testKeyPodSet.GetPrefixName(), set.MemberIPSets[testKeyPodSet.GetPrefixName()].GetPrefixName())
+
+	err = dp.ApplyDataPlane()
+	assert.Nil(t, err)
+
+	payload := getPayload(t, outChan, controlplane.IpsetApply)
+	sets, err := controlplane.DecodeControllerIPSets(payload)
+	assert.Nil(t, err)
+	assert.Equal(t, 2, len(sets))
+
+	err = dp.RemoveFromList(testNestedKeyPodSet, []*ipsets.IPSetMetadata{testKeyPodSet})
+	require.NoError(t, err)
+
+	set = dp.getIPSet(testNestedKeyPodCPSet.GetPrefixName())
+	assert.NotNil(t, set)
+	assert.Equal(t, 0, len(set.MemberIPSets))
+
+	err = dp.ApplyDataPlane()
+	assert.Nil(t, err)
+
+	payload = getPayload(t, outChan, controlplane.IpsetApply)
+	sets, err = controlplane.DecodeControllerIPSets(payload)
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(sets))
+	assert.Equal(t, util.GetHashedName(testNestedKeyPodCPSet.GetPrefixName()), sets[0].GetHashedName())
+
+}
+
 func TestAddToSets(t *testing.T) {
 	outChan := make(chan *protos.Events)
 	dp, err := NewDPSim(outChan)
