@@ -16,6 +16,13 @@ func newDirtyCache() *dirtyCache {
 	}
 }
 
+func (dc *dirtyCache) clearCache() {
+	dc.toAddorUpdateSets = make(map[string]struct{})
+	dc.toDeleteSets = make(map[string]struct{})
+	dc.toAddorUpdatePolicies = make(map[string]struct{})
+	dc.toDeletePolicies = make(map[string]struct{})
+}
+
 func (dc *dirtyCache) modifyAddorUpdateSets(setName string) {
 	delete(dc.toDeleteSets, setName)
 	if _, ok := dc.toAddorUpdateSets[setName]; !ok {

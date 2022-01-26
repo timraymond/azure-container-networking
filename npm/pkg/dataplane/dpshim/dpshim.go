@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-container-networking/npm/pkg/controlplane"
 	"github.com/Azure/azure-container-networking/npm/pkg/dataplane"
@@ -14,6 +15,8 @@ import (
 	npmerrors "github.com/Azure/azure-container-networking/npm/util/errors"
 	"k8s.io/klog"
 )
+
+const cleanEmptySetsInHrs = 24
 
 var ErrChannelUnset = errors.New("channel must be set")
 
@@ -42,7 +45,47 @@ func (dp *DPShim) ResetDataPlane() error {
 	return nil
 }
 
-func (dp *DPShim) RunPeriodicTasks() {}
+// HydrateClients is used in DPShim to hydrate a restarted Daemon Client
+func (dp *DPShim) HydrateClients() (*protos.Events, error) {
+	dp.Lock()
+	defer dp.Unlock()
+
+	if len(dp.setCache) == 0 && len(dp.policyCache) == 0 {
+		klog.Infof("HydrateClients: No local cache objects to hydrate daemon client")
+		return nil, nil
+	}
+
+	goalStates := make(map[string]*protos.GoalState)
+
+	toApplySets, err := dp.hydrateSetCache()
+	if err != nil {
+		return nil, err
+	}
+	if toApplySets != nil {
+		goalStates[controlplane.IpsetApply] = toApplySets
+	}
+
+	toApplyPolicies, err := dp.hydratePolicyCache()
+	if err != nil {
+		return nil, err
+	}
+	if toApplyPolicies != nil {
+		goalStates[controlplane.PolicyApply] = toApplyPolicies
+	}
+
+	if len(goalStates) == 0 {
+		klog.Info("HydrateClients: No changes to apply")
+		return nil, nil
+	}
+
+	return &protos.Events{
+		Payload: goalStates,
+	}, nil
+}
+
+func (dp *DPShim) RunPeriodicTasks() {
+	// Here Run periodic task to check if any sets with empty references are present and delete them
+}
 
 func (dp *DPShim) GetIPSet(setName string) *ipsets.IPSet {
 	return nil
@@ -84,6 +127,7 @@ func (dp *DPShim) DeleteIPSet(setMetadata *ipsets.IPSetMetadata) {
 
 func (dp *DPShim) deleteIPSet(setMetadata *ipsets.IPSetMetadata) {
 	setName := setMetadata.GetPrefixName()
+	klog.Infof("deleteIPSet: cleaning up %s", setName)
 	set, ok := dp.setCache[setName]
 	if !ok {
 		return
@@ -232,7 +276,7 @@ func (dp *DPShim) AddPolicy(networkpolicies *policies.NPMNetworkPolicy) error {
 	return err
 }
 
-func (dp *DPShim) RemovePolicy(PolicyKey string) error {
+func (dp *DPShim) RemovePolicy(policyKey string) error {
 	var err error
 	// apply dataplane after syncing
 	defer func() {
@@ -245,8 +289,8 @@ func (dp *DPShim) RemovePolicy(PolicyKey string) error {
 	dp.Lock()
 	defer dp.Unlock()
 	// keeping err different so we can catch the defer func err
-	delete(dp.policyCache, PolicyKey)
-	dp.dirtyCache.modifyDeletePolicies(PolicyKey)
+	delete(dp.policyCache, policyKey)
+	dp.dirtyCache.modifyDeletePolicies(policyKey)
 
 	return err
 }
@@ -328,11 +372,12 @@ func (dp *DPShim) ApplyDataPlane() error {
 		}
 	}()
 
+	dp.dirtyCache.clearCache()
 	return nil
 }
 
-func (dp *DPShim) policyExists(PolicyKey string) bool {
-	_, ok := dp.policyCache[PolicyKey]
+func (dp *DPShim) policyExists(policyKey string) bool {
+	_, ok := dp.policyCache[policyKey]
 	return ok
 }
 
@@ -387,7 +432,7 @@ func (dp *DPShim) processIPSetsApply() (*protos.GoalState, error) {
 	payload, err := controlplane.EncodeControllerIPSets(toApplySets)
 	if err != nil {
 		klog.Errorf("processIPSetsApply: failed to encode sets %v", err)
-		return nil, err
+		return nil, npmerrors.ErrorWrapper(npmerrors.AppendIPSet, false, "processIPSetsApply: failed to encode sets", err)
 	}
 
 	return getGoalStateFromBuffer(payload), nil
@@ -409,7 +454,7 @@ func (dp *DPShim) processIPSetsDelete() (*protos.GoalState, error) {
 	payload, err := controlplane.EncodeStrings(toDeleteSets)
 	if err != nil {
 		klog.Errorf("processIPSetsDelete: failed to encode sets %v", err)
-		return nil, err
+		return nil, npmerrors.ErrorWrapper(npmerrors.DeleteIPSet, false, "processIPSetsDelete: failed to encode sets", err)
 	}
 
 	return getGoalStateFromBuffer(payload), nil
@@ -436,7 +481,7 @@ func (dp *DPShim) processPoliciesApply() (*protos.GoalState, error) {
 	payload, err := controlplane.EncodeNPMNetworkPolicies(toApplyPolicies)
 	if err != nil {
 		klog.Errorf("processPoliciesApply: failed to encode policies %v", err)
-		return nil, err
+		return nil, npmerrors.ErrorWrapper(npmerrors.AddPolicy, false, "processPoliciesApply: failed to encode sets", err)
 	}
 
 	return getGoalStateFromBuffer(payload), nil
@@ -458,10 +503,84 @@ func (dp *DPShim) processPoliciesRemove() (*protos.GoalState, error) {
 	payload, err := controlplane.EncodeStrings(toDeletePolicies)
 	if err != nil {
 		klog.Errorf("processPoliciesRemove: failed to encode policies %v", err)
-		return nil, err
+		return nil, npmerrors.ErrorWrapper(npmerrors.RemovePolicy, false, "processPoliciesRemove: failed to encode sets", err)
 	}
 
 	return getGoalStateFromBuffer(payload), nil
+}
+
+func (dp *DPShim) hydrateSetCache() (*protos.GoalState, error) {
+	if len(dp.setCache) == 0 {
+		return nil, nil
+	}
+	toApplySets := make([]*controlplane.ControllerIPSets, len(dp.setCache))
+	idx := 0
+
+	for _, set := range dp.setCache {
+		toApplySets[idx] = set
+		idx++
+	}
+
+	payload, err := controlplane.EncodeControllerIPSets(toApplySets)
+	if err != nil {
+		klog.Errorf("processIPSetsApply: failed to encode sets %v", err)
+		return nil, npmerrors.ErrorWrapper(npmerrors.AppendIPSet, false, "processIPSetsApply: failed to encode sets", err)
+	}
+
+	return getGoalStateFromBuffer(payload), nil
+}
+
+func (dp *DPShim) hydratePolicyCache() (*protos.GoalState, error) {
+	if len(dp.policyCache) == 0 {
+		return nil, nil
+	}
+
+	toApplyPolicies := make([]*policies.NPMNetworkPolicy, len(dp.policyCache))
+	idx := 0
+
+	for _, policy := range dp.policyCache {
+		toApplyPolicies[idx] = policy
+		idx++
+	}
+
+	payload, err := controlplane.EncodeNPMNetworkPolicies(toApplyPolicies)
+	if err != nil {
+		klog.Errorf("processPoliciesApply: failed to encode policies %v", err)
+		return nil, npmerrors.ErrorWrapper(npmerrors.AddPolicy, false, "processPoliciesApply: failed to encode sets", err)
+	}
+
+	return getGoalStateFromBuffer(payload), nil
+}
+
+func (dp *DPShim) deleteUnusedSets(stopChannel <-chan struct{}) {
+	go func() {
+		ticker := time.NewTicker(time.Hour * time.Duration(cleanEmptySetsInHrs))
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stopChannel:
+				return
+			case <-ticker.C:
+				klog.Info("deleteUnusedSets: cleaning up unused sets")
+				dp.checkSetReferences()
+				err := dp.ApplyDataPlane()
+				if err != nil {
+					klog.Errorf("deleteUnusedSets: failed to apply dataplane %v", err)
+				}
+			}
+		}
+	}()
+}
+
+func (dp *DPShim) checkSetReferences() {
+	for _, set := range dp.setCache {
+		if !set.CanDelete() {
+			continue
+		}
+
+		dp.deleteIPSet(set.IPSetMetadata)
+	}
 }
 
 func getGoalStateFromBuffer(payload *bytes.Buffer) *protos.GoalState {

@@ -34,9 +34,11 @@ type ControllerIPSets struct {
 
 func NewControllerIPSets(metadata *ipsets.IPSetMetadata) *ControllerIPSets {
 	return &ControllerIPSets{
-		IPSetMetadata: metadata,
-		IPPodMetadata: make(map[string]*dp.PodMetadata),
-		MemberIPSets:  make(map[string]*ipsets.IPSetMetadata),
+		IPSetMetadata:   metadata,
+		IPPodMetadata:   make(map[string]*dp.PodMetadata),
+		MemberIPSets:    make(map[string]*ipsets.IPSetMetadata),
+		ipsetReference:  make(map[string]struct{}),
+		NetPolReference: make(map[string]struct{}),
 	}
 }
 
@@ -48,6 +50,15 @@ func (c *ControllerIPSets) GetMetadata() *ipsets.IPSetMetadata {
 // DecIPSetReferCount decrements the ipset refer count
 func (c *ControllerIPSets) HasReferences() bool {
 	if len(c.ipsetReference) > 0 || len(c.NetPolReference) > 0 {
+		return true
+	}
+	return false
+}
+
+// CanDelete checks for references and members
+func (c *ControllerIPSets) CanDelete() bool {
+	if c.HasReferences() &&
+		(len(c.IPPodMetadata) > 0 || len(c.MemberIPSets) > 0) {
 		return true
 	}
 	return false
