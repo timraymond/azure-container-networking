@@ -20,15 +20,11 @@ const (
 	sleepAfterChanSent = time.Millisecond * 10
 	testSetName        = "test-set"
 	testListName       = "test-list"
-	testPodKey         = "test-pod-key"
-	testPodIP          = "10.0.0.0"
 )
 
 var (
 	testNSSet             = ipsets.NewIPSetMetadata("test-ns-set", ipsets.Namespace)
-	testNSCPSet           = controlplane.NewControllerIPSets(testNSSet)
 	testKeyPodSet         = ipsets.NewIPSetMetadata("test-keyPod-set", ipsets.KeyLabelOfPod)
-	testKeyPodCPSet       = controlplane.NewControllerIPSets(testKeyPodSet)
 	testNestedKeyPodSet   = ipsets.NewIPSetMetadata("test-nestedkeyPod-set", ipsets.NestedLabelOfPod)
 	testNestedKeyPodCPSet = controlplane.NewControllerIPSets(testNestedKeyPodSet)
 	setPodKey1            = &ipsets.TranslatedIPSet{
@@ -80,22 +76,12 @@ var (
 		PodIP:    "10.0.0.0",
 		NodeName: "",
 	}
-	podMetadataB = &dataplane.PodMetadata{
-		PodKey:   "b",
-		PodIP:    testPodIP,
-		NodeName: "",
-	}
-	podMetadataC = &dataplane.PodMetadata{
-		PodKey:   "c",
-		PodIP:    "10.0.0.2",
-		NodeName: "",
-	}
 )
 
 func TestAddToList(t *testing.T) {
 	outChan := make(chan *protos.Events)
-	dp, err := NewDPSim(outChan)
-	assert.Nil(t, err)
+	dp, err := NewDPSim(outChan, nil)
+	require.NoError(t, err)
 
 	setMetadata := ipsets.NewIPSetMetadata(testSetName, ipsets.Namespace)
 	listMetadata := ipsets.NewIPSetMetadata(testListName, ipsets.KeyLabelOfNamespace)
@@ -104,7 +90,7 @@ func TestAddToList(t *testing.T) {
 	err = dp.AddToLists([]*ipsets.IPSetMetadata{listMetadata}, []*ipsets.IPSetMetadata{setMetadata})
 	require.NoError(t, err)
 
-	set := dp.getIPSet(listMetadata.GetPrefixName())
+	set := dp.getCachedIPSet(listMetadata.GetPrefixName())
 	assert.NotNil(t, set)
 	assert.Equal(t, listMetadata.GetPrefixName(), set.GetPrefixName())
 	assert.Equal(t, util.GetHashedName(listMetadata.GetPrefixName()), set.GetHashedName())
@@ -112,25 +98,25 @@ func TestAddToList(t *testing.T) {
 	assert.Equal(t, setMetadata.GetPrefixName(), set.MemberIPSets[setMetadata.GetPrefixName()].GetPrefixName())
 
 	err = dp.ApplyDataPlane()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	payload := getPayload(t, outChan, controlplane.IpsetApply)
 	sets, err := controlplane.DecodeControllerIPSets(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(sets))
 }
 
 func TestRemoveFromList(t *testing.T) {
 	outChan := make(chan *protos.Events)
-	dp, err := NewDPSim(outChan)
-	assert.Nil(t, err)
+	dp, err := NewDPSim(outChan, nil)
+	require.NoError(t, err)
 
 	dp.CreateIPSets([]*ipsets.IPSetMetadata{testKeyPodSet, testNestedKeyPodSet})
 
 	err = dp.AddToLists([]*ipsets.IPSetMetadata{testNestedKeyPodSet}, []*ipsets.IPSetMetadata{testKeyPodSet})
 	require.NoError(t, err)
 
-	set := dp.getIPSet(testNestedKeyPodCPSet.GetPrefixName())
+	set := dp.getCachedIPSet(testNestedKeyPodCPSet.GetPrefixName())
 	assert.NotNil(t, set)
 	assert.Equal(t, testNestedKeyPodCPSet.GetPrefixName(), set.GetPrefixName())
 	assert.Equal(t, util.GetHashedName(testNestedKeyPodCPSet.GetPrefixName()), set.GetHashedName())
@@ -138,26 +124,26 @@ func TestRemoveFromList(t *testing.T) {
 	assert.Equal(t, testKeyPodSet.GetPrefixName(), set.MemberIPSets[testKeyPodSet.GetPrefixName()].GetPrefixName())
 
 	err = dp.ApplyDataPlane()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	payload := getPayload(t, outChan, controlplane.IpsetApply)
 	sets, err := controlplane.DecodeControllerIPSets(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(sets))
 
 	err = dp.RemoveFromList(testNestedKeyPodSet, []*ipsets.IPSetMetadata{testKeyPodSet})
 	require.NoError(t, err)
 
-	set = dp.getIPSet(testNestedKeyPodCPSet.GetPrefixName())
+	set = dp.getCachedIPSet(testNestedKeyPodCPSet.GetPrefixName())
 	assert.NotNil(t, set)
 	assert.Equal(t, 0, len(set.MemberIPSets))
 
 	err = dp.ApplyDataPlane()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	payload = getPayload(t, outChan, controlplane.IpsetApply)
 	sets, err = controlplane.DecodeControllerIPSets(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(sets))
 	assert.Equal(t, util.GetHashedName(testNestedKeyPodCPSet.GetPrefixName()), sets[0].GetHashedName())
 
@@ -165,40 +151,41 @@ func TestRemoveFromList(t *testing.T) {
 
 func TestAddToSets(t *testing.T) {
 	outChan := make(chan *protos.Events)
-	dp, err := NewDPSim(outChan)
-	assert.Nil(t, err)
+	dp, err := NewDPSim(outChan, nil)
+	require.NoError(t, err)
 
-	dp.AddToSets([]*ipsets.IPSetMetadata{
+	err = dp.AddToSets([]*ipsets.IPSetMetadata{
 		testKeyPodSet,
 		testNSSet,
 	},
 		podMetadata,
 	)
+	require.NoError(t, err)
 
 	err = dp.ApplyDataPlane()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	payload := getPayload(t, outChan, controlplane.IpsetApply)
 	sets, err := controlplane.DecodeControllerIPSets(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, len(sets))
 }
 
 func TestRemoveFromSet(t *testing.T) {
 	outChan := make(chan *protos.Events)
-	dp, err := NewDPSim(outChan)
-	assert.Nil(t, err)
+	dp, err := NewDPSim(outChan, nil)
+	require.NoError(t, err)
 
 	setMetadata := ipsets.NewIPSetMetadata(testSetName, ipsets.Namespace)
 	err = dp.AddToSets([]*ipsets.IPSetMetadata{setMetadata}, podMetadata)
 	require.NoError(t, err)
 
 	err = dp.ApplyDataPlane()
-	assert.Nil(t, err)
+	require.NoError(t, err)
 
 	payload := getPayload(t, outChan, controlplane.IpsetApply)
 	sets, err := controlplane.DecodeControllerIPSets(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(sets))
 
 	err = dp.RemoveFromSets([]*ipsets.IPSetMetadata{setMetadata}, podMetadata)
@@ -215,15 +202,16 @@ func TestRemoveFromSet(t *testing.T) {
 
 func TestPolicyUpdateEvent(t *testing.T) {
 	outChan := make(chan *protos.Events)
-	dp, err := NewDPSim(outChan)
-	assert.Nil(t, err)
+	dp, err := NewDPSim(outChan, nil)
+	require.NoError(t, err)
 
-	dp.UpdatePolicy(testPolicyobj)
+	err = dp.UpdatePolicy(testPolicyobj)
+	require.NoError(t, err)
 	assert.True(t, dp.policyExists(testPolicyobj.PolicyKey))
 
 	payload := getPayload(t, outChan, controlplane.PolicyApply)
 	netpols, err := controlplane.DecodeNPMNetworkPolicies(payload)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, len(netpols))
 
 	assert.True(t, reflect.DeepEqual(netpols[0], testPolicyobj))

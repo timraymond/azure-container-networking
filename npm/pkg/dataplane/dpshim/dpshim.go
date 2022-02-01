@@ -22,13 +22,14 @@ var ErrChannelUnset = errors.New("channel must be set")
 
 type DPShim struct {
 	outChannel  chan *protos.Events
+	stopChannel <-chan struct{}
 	setCache    map[string]*controlplane.ControllerIPSets
 	policyCache map[string]*policies.NPMNetworkPolicy
 	dirtyCache  *dirtyCache
 	sync.Mutex
 }
 
-func NewDPSim(outChannel chan *protos.Events) (*DPShim, error) {
+func NewDPSim(outChannel chan *protos.Events, stopChannel <-chan struct{}) (*DPShim, error) {
 	if outChannel == nil {
 		return nil, fmt.Errorf("out channel must be set: %w", ErrChannelUnset)
 	}
@@ -37,6 +38,7 @@ func NewDPSim(outChannel chan *protos.Events) (*DPShim, error) {
 		outChannel:  outChannel,
 		setCache:    make(map[string]*controlplane.ControllerIPSets),
 		policyCache: make(map[string]*policies.NPMNetworkPolicy),
+		stopChannel: stopChannel,
 		dirtyCache:  newDirtyCache(),
 	}, nil
 }
@@ -85,13 +87,15 @@ func (dp *DPShim) HydrateClients() (*protos.Events, error) {
 
 func (dp *DPShim) RunPeriodicTasks() {
 	// Here Run periodic task to check if any sets with empty references are present and delete them
+	dp.deleteUnusedSets(dp.stopChannel)
 }
 
+// GetIPSet is a no-op in DPShim since DPShim does not deal with IPSet object
 func (dp *DPShim) GetIPSet(setName string) *ipsets.IPSet {
 	return nil
 }
 
-func (dp *DPShim) getIPSet(setName string) *controlplane.ControllerIPSets {
+func (dp *DPShim) getCachedIPSet(setName string) *controlplane.ControllerIPSets {
 	return dp.setCache[setName]
 }
 
@@ -100,10 +104,10 @@ func (dp *DPShim) setExists(setName string) bool {
 	return ok
 }
 
-func (dp *DPShim) CreateIPSets(setNames []*ipsets.IPSetMetadata) {
+func (dp *DPShim) CreateIPSets(setMetadatas []*ipsets.IPSetMetadata) {
 	dp.Lock()
 	defer dp.Unlock()
-	for _, set := range setNames {
+	for _, set := range setMetadatas {
 		dp.createIPSet(set)
 	}
 }
@@ -134,6 +138,7 @@ func (dp *DPShim) deleteIPSet(setMetadata *ipsets.IPSetMetadata) {
 	}
 
 	if set.HasReferences() {
+		klog.Infof("deleteIPSet: ignore delete since set: %s has references", setName)
 		return
 	}
 
@@ -155,14 +160,7 @@ func (dp *DPShim) AddToSets(setMetadatas []*ipsets.IPSetMetadata, podMetadata *d
 			return npmerrors.Errorf(npmerrors.AppendIPSet, false, fmt.Sprintf("ipset %s is not a hash set", prefixedSetName))
 		}
 
-		cachedPod, ok := set.IPPodMetadata[podMetadata.PodIP]
 		set.IPPodMetadata[podMetadata.PodIP] = podMetadata
-		if ok && cachedPod.PodKey != podMetadata.PodKey {
-			klog.Infof("AddToSet: PodOwner has changed for Ip: %s, setName:%s, Old podKey: %s, new podKey: %s. Replace context with new PodOwner.",
-				cachedPod.PodIP, set.Name, cachedPod.PodKey, podMetadata.PodKey)
-			continue
-		}
-
 		dp.dirtyCache.modifyAddorUpdateSets(prefixedSetName)
 	}
 
@@ -269,6 +267,11 @@ func (dp *DPShim) AddPolicy(networkpolicies *policies.NPMNetworkPolicy) error {
 
 	if dp.policyExists(networkpolicies.PolicyKey) {
 		return nil
+	}
+
+	policies.NormalizePolicy(networkpolicies)
+	if vErr := policies.ValidatePolicy(networkpolicies); vErr != nil {
+		return npmerrors.Errorf(npmerrors.AddPolicy, false, fmt.Sprintf("couldn't add malformed policy: %s", vErr.Error()))
 	}
 	dp.policyCache[networkpolicies.PolicyKey] = networkpolicies
 	dp.dirtyCache.modifyAddorUpdatePolicies(networkpolicies.PolicyKey)
@@ -419,7 +422,7 @@ func (dp *DPShim) processIPSetsApply() (*protos.GoalState, error) {
 	idx := 0
 
 	for setName := range dp.dirtyCache.toAddorUpdateSets {
-		set := dp.getIPSet(setName)
+		set := dp.getCachedIPSet(setName)
 		if set == nil {
 			klog.Errorf("processIPSetsApply: set %s not found", setName)
 			return nil, npmerrors.Errorf(npmerrors.AppendIPSet, false, fmt.Sprintf("ipset %s not found", setName))

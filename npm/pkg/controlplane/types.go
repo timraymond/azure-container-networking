@@ -47,21 +47,15 @@ func (c *ControllerIPSets) GetMetadata() *ipsets.IPSetMetadata {
 	return c.IPSetMetadata
 }
 
-// DecIPSetReferCount decrements the ipset refer count
+// HasReferences checks if an ipset has references
 func (c *ControllerIPSets) HasReferences() bool {
-	if len(c.ipsetReference) > 0 || len(c.NetPolReference) > 0 {
-		return true
-	}
-	return false
+	return len(c.ipsetReference) > 0 || len(c.NetPolReference) > 0
 }
 
 // CanDelete checks for references and members
 func (c *ControllerIPSets) CanDelete() bool {
-	if c.HasReferences() &&
-		(len(c.IPPodMetadata) > 0 || len(c.MemberIPSets) > 0) {
-		return true
-	}
-	return false
+	return c.HasReferences() &&
+		(len(c.IPPodMetadata) > 0 || len(c.MemberIPSets) > 0)
 }
 
 func (c *ControllerIPSets) AddReference(referenceName, referenceType string) {

@@ -99,7 +99,7 @@ func startControlplane(config npmconfig.Config, flags npmconfig.Flags) error {
 
 	mgr := transport.NewEventsServer(context.Background(), config.Transport.Port)
 
-	dp, err = dpshim.NewDPSim(mgr.InputChannel())
+	dp, err = dpshim.NewDPSim(mgr.InputChannel(), wait.NeverStop)
 	if err != nil {
 		klog.Errorf("failed to create dataplane shim with error: %v", err)
 		return fmt.Errorf("failed to create dataplane with error: %w", err)

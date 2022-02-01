@@ -157,8 +157,8 @@ func TestNormalizeAndValidatePolicy(t *testing.T) {
 				PolicyKey: "x/test-netpol",
 				ACLs:      []*ACLPolicy{tt.acl},
 			}
-			normalizePolicy(netPol)
-			err := validatePolicy(netPol)
+			NormalizePolicy(netPol)
+			err := ValidatePolicy(netPol)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {
