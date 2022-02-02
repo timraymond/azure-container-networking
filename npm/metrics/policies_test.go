@@ -2,13 +2,13 @@ package metrics
 
 import "testing"
 
-var (
-	numPoliciesMetric = &basicMetric{ResetNumPolicies, IncNumPolicies, DecNumPolicies, GetNumPolicies}
-	policyExecMetric  = &recordingMetric{RecordPolicyExecTime, GetPolicyExecCount}
-)
+var numPoliciesMetric = &basicMetric{ResetNumPolicies, IncNumPolicies, DecNumPolicies, GetNumPolicies}
 
-func TestRecordPolicyExecTime(t *testing.T) {
-	testStopAndRecord(t, policyExecMetric)
+func TestRecordPolicyApplyTime(t *testing.T) {
+	testStopAndRecordApplyTime(t, &applyMetric{
+		RecordPolicyApplyTime,
+		GetPolicyApplyCount,
+	})
 }
 
 func TestIncNumPolicies(t *testing.T) {

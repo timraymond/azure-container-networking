@@ -245,6 +245,13 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Infof("Network Policy %s is not found, may be it is deleted", key)
+
+			if _, ok := c.rawNpMap[key]; ok {
+				// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
+				timer := metrics.StartNewTimer()
+				defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+			}
+
 			// netPolObj is not found, but should need to check the RawNpMap cache with key.
 			// cleanUpNetworkPolicy method will take care of the deletion of a cached network policy if the cached network policy exists with key in our RawNpMap cache.
 			err = c.cleanUpNetworkPolicy(key, safeToCleanUpAzureNpmChain)
@@ -259,6 +266,11 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	// If DeletionTimestamp of the netPolObj is set, start cleaning up lastly applied states.
 	// This is early cleaning up process from updateNetPol event
 	if netPolObj.ObjectMeta.DeletionTimestamp != nil || netPolObj.ObjectMeta.DeletionGracePeriodSeconds != nil {
+		if _, ok := c.rawNpMap[key]; ok {
+			// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
+			timer := metrics.StartNewTimer()
+			defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+		}
 		err = c.cleanUpNetworkPolicy(key, safeToCleanUpAzureNpmChain)
 		if err != nil {
 			return fmt.Errorf("Error: %v when ObjectMeta.DeletionTimestamp field is set\n", err)
@@ -304,8 +316,7 @@ func (c *NetworkPolicyController) initializeDefaultAzureNpmChain() error {
 
 // syncAddAndUpdateNetPol handles a new network policy or an updated network policy object triggered by add and update events
 func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) error {
-	prometheusTimer := metrics.StartNewTimer()
-	defer metrics.RecordPolicyExecTime(prometheusTimer) // record execution time regardless of failure
+	timer := metrics.StartNewTimer()
 
 	var err error
 	netpolKey, err := cache.MetaNamespaceKeyFunc(netPolObj)
@@ -327,6 +338,15 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	// So, avoid extra overhead to install default Azure NPM chain in initializeDefaultAzureNpmChain function.
 	// To achieve it, use flag unSafeToCleanUpAzureNpmChain to indicate that the default Azure NPM chain cannot be deleted.
 	// delete existing network policy
+
+	var mode metrics.ApplyMode
+	if _, ok := c.rawNpMap[netpolKey]; ok {
+		mode = metrics.UpdateMode
+	} else {
+		mode = metrics.CreateMode
+	}
+	defer metrics.RecordPolicyApplyTime(timer, mode)
+
 	err = c.cleanUpNetworkPolicy(netpolKey, unSafeToCleanUpAzureNpmChain)
 	if err != nil {
 		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to deleteNetworkPolicy due to %s", err)

@@ -206,6 +206,13 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Infof("Network Policy %s is not found, may be it is deleted", key)
+
+			if _, ok := c.rawNpSpecMap[key]; ok {
+				// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
+				timer := metrics.StartNewTimer()
+				defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+			}
+
 			// netPolObj is not found, but should need to check the RawNpMap cache with key.
 			// cleanUpNetworkPolicy method will take care of the deletion of a cached network policy if the cached network policy exists with key in our RawNpMap cache.
 			err = c.cleanUpNetworkPolicy(key)
@@ -220,6 +227,11 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	// If DeletionTimestamp of the netPolObj is set, start cleaning up lastly applied states.
 	// This is early cleaning up process from updateNetPol event
 	if netPolObj.ObjectMeta.DeletionTimestamp != nil || netPolObj.ObjectMeta.DeletionGracePeriodSeconds != nil {
+		if _, ok := c.rawNpSpecMap[key]; ok {
+			// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
+			timer := metrics.StartNewTimer()
+			defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+		}
 		err = c.cleanUpNetworkPolicy(key)
 		if err != nil {
 			return fmt.Errorf("error: %w when ObjectMeta.DeletionTimestamp field is set", err)
@@ -248,8 +260,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 
 // syncAddAndUpdateNetPol handles a new network policy or an updated network policy object triggered by add and update events
 func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) error {
-	prometheusTimer := metrics.StartNewTimer()
-	defer metrics.RecordPolicyExecTime(prometheusTimer) // record execution time regardless of failure
+	timer := metrics.StartNewTimer()
 
 	var err error
 	netpolKey, err := cache.MetaNamespaceKeyFunc(netPolObj)
@@ -269,6 +280,15 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 		return errNetPolTranslationFailure
 	}
 
+	_, policyExisted := c.rawNpSpecMap[netpolKey]
+	var mode metrics.ApplyMode
+	if policyExisted {
+		mode = metrics.UpdateMode
+	} else {
+		mode = metrics.CreateMode
+	}
+	defer metrics.RecordPolicyApplyTime(timer, mode)
+
 	// install translated rules into Dataplane
 	// DP update policy call will check if this policy already exists in kernel
 	// if yes: then will delete old rules and program new rules
@@ -280,8 +300,7 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to update translated NPMNetworkPolicy into Dataplane due to %w", err)
 	}
 
-	_, ok := c.rawNpSpecMap[netpolKey]
-	if !ok {
+	if !policyExisted {
 		// inc metric for NumPolicies only if it a new network policy
 		metrics.IncNumPolicies()
 	}

@@ -1,5 +1,7 @@
 package metrics
 
+import "github.com/prometheus/client_golang/prometheus"
+
 // IncNumPolicies increments the number of policies.
 func IncNumPolicies() {
 	numPolicies.Inc()
@@ -15,10 +17,14 @@ func ResetNumPolicies() {
 	numPolicies.Set(0)
 }
 
-// RecordPolicyExecTime adds an observation of execution time for adding a policy.
+// RecordPolicyApplyTime adds an observation of policy apply time for the specified apply mode.
 // The execution time is from the timer's start until now.
-func RecordPolicyExecTime(timer *Timer) {
-	timer.stopAndRecord(addPolicyExecTime)
+func RecordPolicyApplyTime(timer *Timer, mode ApplyMode) {
+	if mode == CreateMode {
+		timer.stopAndRecord(addPolicyExecTime)
+	} else {
+		timer.stopAndRecordApplyTime(policyApplyTime, mode)
+	}
 }
 
 // GetNumPolicies returns the number of policies.
@@ -27,8 +33,12 @@ func GetNumPolicies() (int, error) {
 	return getValue(numPolicies)
 }
 
-// GetPolicyExecCount returns the number of observations for execution time of adding policies.
+// GetPolicyApplyCount returns the number of observations for policy apply time for the specified apply mode.
 // This function is slow.
-func GetPolicyExecCount() (int, error) {
-	return getCountValue(addPolicyExecTime)
+func GetPolicyApplyCount(mode ApplyMode) (int, error) {
+	if mode == CreateMode {
+		return getCountValue(addPolicyExecTime)
+	}
+	labels := prometheus.Labels{applyModeLabel: string(mode)}
+	return getCountValue(policyApplyTime.With(labels))
 }

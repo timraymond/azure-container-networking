@@ -24,6 +24,12 @@ var (
 	addIPSetExecTime   prometheus.Summary
 	numIPSetEntries    prometheus.Gauge
 	ipsetInventory     *prometheus.GaugeVec
+
+	policyApplyTime    *prometheus.SummaryVec
+	podApplyTime       *prometheus.SummaryVec
+	namespaceApplyTime *prometheus.SummaryVec
+
+	execTimeQuantiles = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
 )
 
 // Constants for metric names and descriptions as well as exported labels for Vector metrics
@@ -33,6 +39,17 @@ const (
 
 	addPolicyExecTimeName = "add_policy_exec_time"
 	addPolicyExecTimeHelp = "Execution time in milliseconds for adding a network policy"
+
+	// TODO do update/delete
+	policyApplyTimeName = "policy_apply_time"
+	policyApplyTimeHelp = "Execution time in milliseconds for updating/deleting a network policy. NOTE: for apply time for adding, see add_policy_exec_time"
+	applyModeLabel      = "apply_mode"
+
+	podApplyTimeName = "pod_apply_time"
+	podApplyTimeHelp = "Execution time in milliseconds for adding/updating/deleting a pod"
+
+	namespaceApplyTimeName = "namespace_apply_time"
+	namespaceApplyTimeHelp = "Execution time in milliseconds for adding/updating/deleting a namespace"
 
 	numACLRulesName = "num_iptables_rules"
 	numACLRulesHelp = "The number of current IPTable rules for this node"
@@ -61,6 +78,20 @@ var (
 	haveInitialized      = false
 )
 
+type ApplyMode string
+
+const (
+	CreateMode ApplyMode = "create"
+	UpdateMode ApplyMode = "update"
+	DeleteMode ApplyMode = "delete"
+)
+
+var knownApplyModes = map[ApplyMode]struct{}{
+	CreateMode: {},
+	UpdateMode: {},
+	DeleteMode: {},
+}
+
 // InitializeAll creates all the Prometheus Metrics. The metrics will be nil before this method is called.
 func InitializeAll() {
 	if !haveInitialized {
@@ -72,6 +103,11 @@ func InitializeAll() {
 		addIPSetExecTime = createSummary(addIPSetExecTimeName, addIPSetExecTimeHelp, true)
 		numIPSetEntries = createGauge(numIPSetEntriesName, numIPSetEntriesHelp, false)
 		ipsetInventory = createGaugeVec(ipsetInventoryName, ipsetInventoryHelp, false, setNameLabel, setHashLabel)
+
+		policyApplyTime = createSummaryVec(policyApplyTimeName, policyApplyTimeHelp, true, applyModeLabel)
+		podApplyTime = createSummaryVec(podApplyTimeName, podApplyTimeHelp, true, applyModeLabel)
+		namespaceApplyTime = createSummaryVec(namespaceApplyTimeName, namespaceApplyTimeHelp, true, applyModeLabel)
+
 		log.Logf("Finished initializing all Prometheus metrics")
 		haveInitialized = true
 	}
@@ -105,7 +141,7 @@ func getRegistry(isNodeLevel bool) *prometheus.Registry {
 	return registry
 }
 
-func createGauge(name string, helpMessage string, isNodeLevel bool) prometheus.Gauge {
+func createGauge(name, helpMessage string, isNodeLevel bool) prometheus.Gauge {
 	gauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -117,7 +153,7 @@ func createGauge(name string, helpMessage string, isNodeLevel bool) prometheus.G
 	return gauge
 }
 
-func createGaugeVec(name string, helpMessage string, isNodeLevel bool, labels ...string) *prometheus.GaugeVec {
+func createGaugeVec(name, helpMessage string, isNodeLevel bool, labels ...string) *prometheus.GaugeVec {
 	gaugeVec := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -130,15 +166,30 @@ func createGaugeVec(name string, helpMessage string, isNodeLevel bool, labels ..
 	return gaugeVec
 }
 
-func createSummary(name string, helpMessage string, isNodeLevel bool) prometheus.Summary {
+func createSummary(name, helpMessage string, isNodeLevel bool) prometheus.Summary {
 	summary := prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Namespace:  namespace,
 			Name:       name,
 			Help:       helpMessage,
-			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+			Objectives: execTimeQuantiles,
 			// quantiles e.g. the "0.5 quantile" will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
 		},
+	)
+	register(summary, name, isNodeLevel)
+	return summary
+}
+
+func createSummaryVec(name, helpMessage string, isNodeLevel bool, labels ...string) *prometheus.SummaryVec {
+	summary := prometheus.NewSummaryVec(
+		prometheus.SummaryOpts{
+			Namespace:  namespace,
+			Name:       name,
+			Help:       helpMessage,
+			Objectives: execTimeQuantiles,
+			// quantiles e.g. the "0.5 quantile" will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
+		},
+		labels,
 	)
 	register(summary, name, isNodeLevel)
 	return summary

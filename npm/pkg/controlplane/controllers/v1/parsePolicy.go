@@ -33,6 +33,7 @@ func isSamePolicy(old, new *networkingv1.NetworkPolicy) bool {
 		return false
 	}
 
+	fmt.Println("same!!!")
 	return true
 }
 

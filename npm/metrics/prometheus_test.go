@@ -28,6 +28,11 @@ type recordingMetric struct {
 	getCount func() (int, error)
 }
 
+type applyMetric struct {
+	record   func(timer *Timer, mode ApplyMode)
+	getCount func(mode ApplyMode) (int, error)
+}
+
 func assertMetricVal(t *testing.T, metric *basicMetric, expectedVal int) {
 	val, err := metric.get()
 	promutil.NotifyIfErrors(t, err)
@@ -56,6 +61,19 @@ func testResetMetric(t *testing.T, metric *basicMetric) {
 	metric.inc()
 	metric.reset()
 	assertMetricVal(t, metric, 0)
+}
+
+func testStopAndRecordApplyTime(t *testing.T, m *applyMetric) {
+	for _, mode := range []ApplyMode{CreateMode, UpdateMode, DeleteMode} {
+		testStopAndRecord(t, &recordingMetric{
+			func(timer *Timer) {
+				m.record(timer, mode)
+			},
+			func() (int, error) {
+				return m.getCount(mode)
+			},
+		})
+	}
 }
 
 func testStopAndRecord(t *testing.T, metric *recordingMetric) {

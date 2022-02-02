@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"k8s.io/klog"
 )
 
 // Timer is a one-time-use tool for recording time between a start and end point
@@ -20,6 +21,16 @@ func StartNewTimer() *Timer {
 // stopAndRecord ends a timer and records its delta in a summary
 func (timer *Timer) stopAndRecord(observer prometheus.Summary) {
 	observer.Observe(timer.timeElapsed())
+}
+
+func (timer *Timer) stopAndRecordApplyTime(observer *prometheus.SummaryVec, mode ApplyMode) {
+	timer.stop()
+	if _, ok := knownApplyModes[mode]; !ok {
+		klog.Errorf("Unknown apply mode [%v] when recording apply time", mode)
+		return
+	}
+	labels := prometheus.Labels{applyModeLabel: string(mode)}
+	observer.With(labels).Observe(timer.timeElapsed())
 }
 
 func (timer *Timer) stop() {

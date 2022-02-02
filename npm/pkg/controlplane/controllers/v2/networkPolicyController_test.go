@@ -187,13 +187,6 @@ func checkNetPolTestResult(testName string, f *netPolFixture, testCases []expect
 	}
 }
 
-func resetPrometheusAndGetExecCount(t *testing.T) int {
-	metrics.ResetNumPolicies()
-	execCount, err := metrics.GetPolicyExecCount()
-	promutil.NotifyIfErrors(t, err)
-	return execCount
-}
-
 func testPrometheusMetrics(t *testing.T, expectedNumPolicies, expectedExecCount int) {
 	numPolicies, err := metrics.GetNumPolicies()
 	promutil.NotifyIfErrors(t, err)
@@ -201,7 +194,8 @@ func testPrometheusMetrics(t *testing.T, expectedNumPolicies, expectedExecCount 
 		require.FailNowf(t, "", "Number of policies didn't register correctly in Prometheus. Expected %d. Got %d.", expectedNumPolicies, numPolicies)
 	}
 
-	execCount, err := metrics.GetPolicyExecCount()
+	// FIXME update UTs for prometheus metrics like in v1
+	execCount, err := metrics.GetPolicyApplyCount(metrics.CreateMode)
 	promutil.NotifyIfErrors(t, err)
 	if execCount != expectedExecCount {
 		require.FailNowf(t, "", "Count for execution time didn't register correctly in Prometheus. Expected %d. Got %d.", expectedExecCount, execCount)
@@ -232,13 +226,13 @@ func TestAddMultipleNetworkPolicies(t *testing.T) {
 
 	dp.EXPECT().UpdatePolicy(gomock.Any()).Times(2)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 
 	addNetPol(f, netPolObj1)
 	addNetPol(f, netPolObj2)
 
 	testCases := []expectedNetPolValues{
-		{2, 0, 2, execCount + 2},
+		{2, 0, 2, 2},
 	}
 	checkNetPolTestResult("TestAddMultipleNetPols", f, testCases)
 }
@@ -257,12 +251,12 @@ func TestAddNetworkPolicy(t *testing.T) {
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 	dp.EXPECT().UpdatePolicy(gomock.Any()).Times(1)
 
 	addNetPol(f, netPolObj)
 	testCases := []expectedNetPolValues{
-		{1, 0, 1, execCount + 1},
+		{1, 0, 1, 1},
 	}
 
 	checkNetPolTestResult("TestAddNetPol", f, testCases)
@@ -282,13 +276,13 @@ func TestDeleteNetworkPolicy(t *testing.T) {
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 	dp.EXPECT().UpdatePolicy(gomock.Any()).Times(1)
 	dp.EXPECT().RemovePolicy(gomock.Any()).Times(1)
 
 	deleteNetPol(t, f, netPolObj, DeletedFinalStateknownObject)
 	testCases := []expectedNetPolValues{
-		{0, 0, 0, execCount + 1},
+		{0, 0, 0, 1},
 	}
 	checkNetPolTestResult("TestDelNetPol", f, testCases)
 }
@@ -307,7 +301,7 @@ func TestDeleteNetworkPolicyWithTombstone(t *testing.T) {
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 
 	netPolKey := getKey(netPolObj, t)
 	tombstone := cache.DeletedFinalStateUnknown{
@@ -317,7 +311,7 @@ func TestDeleteNetworkPolicyWithTombstone(t *testing.T) {
 
 	f.netPolController.deleteNetworkPolicy(tombstone)
 	testCases := []expectedNetPolValues{
-		{0, 1, 0, execCount},
+		{0, 1, 0, 0},
 	}
 	checkNetPolTestResult("TestDeleteNetworkPolicyWithTombstone", f, testCases)
 }
@@ -336,13 +330,13 @@ func TestDeleteNetworkPolicyWithTombstoneAfterAddingNetworkPolicy(t *testing.T) 
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 	dp.EXPECT().UpdatePolicy(gomock.Any()).Times(1)
 	dp.EXPECT().RemovePolicy(gomock.Any()).Times(1)
 
 	deleteNetPol(t, f, netPolObj, DeletedFinalStateUnknownObject)
 	testCases := []expectedNetPolValues{
-		{0, 0, 0, execCount + 1},
+		{0, 0, 0, 1},
 	}
 	checkNetPolTestResult("TestDeleteNetworkPolicyWithTombstoneAfterAddingNetworkPolicy", f, testCases)
 }
@@ -363,7 +357,7 @@ func TestUpdateNetworkPolicy(t *testing.T) {
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 
 	newNetPolObj := oldNetPolObj.DeepCopy()
 	// oldNetPolObj.ResourceVersion value is "0"
@@ -373,7 +367,7 @@ func TestUpdateNetworkPolicy(t *testing.T) {
 
 	updateNetPol(t, f, oldNetPolObj, newNetPolObj)
 	testCases := []expectedNetPolValues{
-		{1, 0, 1, execCount + 1},
+		{1, 0, 1, 1},
 	}
 	checkNetPolTestResult("TestUpdateNetPol", f, testCases)
 }
@@ -392,7 +386,7 @@ func TestLabelUpdateNetworkPolicy(t *testing.T) {
 	dp := dpmocks.NewMockGenericDataplane(ctrl)
 	f.newNetPolController(stopCh, dp)
 
-	execCount := resetPrometheusAndGetExecCount(f.t)
+	metrics.ReinitializeAll()
 
 	newNetPolObj := oldNetPolObj.DeepCopy()
 	// update podSelctor in a new network policy field
@@ -410,7 +404,7 @@ func TestLabelUpdateNetworkPolicy(t *testing.T) {
 	updateNetPol(t, f, oldNetPolObj, newNetPolObj)
 
 	testCases := []expectedNetPolValues{
-		{1, 0, 1, execCount + 2},
+		{1, 0, 1, 2},
 	}
 	checkNetPolTestResult("TestUpdateNetPol", f, testCases)
 }

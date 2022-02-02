@@ -25,8 +25,12 @@ func getVecValue(gaugeVecMetric *prometheus.GaugeVec, labels prometheus.Labels) 
 
 // getCountValue returns the number of times a Summary metric has recorded an observation.
 // This function is slow.
-func getCountValue(summaryMetric prometheus.Summary) (int, error) {
-	dtoMetric, err := getDTOMetric(summaryMetric)
+func getCountValue(summaryMetric interface{}) (int, error) {
+	collector, ok := summaryMetric.(prometheus.Collector)
+	if !ok {
+		return 0, fmt.Errorf("summary metric is not a collector")
+	}
+	dtoMetric, err := getDTOMetric(collector)
 	if err != nil {
 		return 0, err
 	}

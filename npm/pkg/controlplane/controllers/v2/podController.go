@@ -327,6 +327,13 @@ func (c *PodController) syncPod(key string) error {
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.Infof("pod %s not found, may be it is deleted", key)
+
+			if _, ok := c.podMap[key]; ok {
+				// record time to delete pod if it exists (can't call within cleanUpDeletedPod because this can be called by a pod update)
+				timer := metrics.StartNewTimer()
+				defer metrics.RecordPodApplyTime(timer, metrics.DeleteMode)
+			}
+
 			// cleanUpDeletedPod will check if the pod exists in cache, if it does then proceeds with deletion
 			// if it does not exists, then event will be no-op
 			err = c.cleanUpDeletedPod(key)
@@ -344,6 +351,11 @@ func (c *PodController) syncPod(key string) error {
 	// NPM starts clean-up the lastly applied states even in update events.
 	// This proactive clean-up helps to miss stale pod object in case delete event is missed.
 	if isCompletePod(pod) {
+		if _, ok := c.podMap[key]; ok {
+			// record time to delete pod if it exists (can't call within cleanUpDeletedPod because this can be called by a pod update)
+			timer := metrics.StartNewTimer()
+			defer metrics.RecordPodApplyTime(timer, metrics.DeleteMode)
+		}
 		if err = c.cleanUpDeletedPod(key); err != nil {
 			return fmt.Errorf("Error: %w when when pod is in completed state", err)
 		}
@@ -418,6 +430,8 @@ func (c *PodController) syncAddedPod(podObj *corev1.Pod) error {
 
 // syncAddAndUpdatePod handles updating pod ip in its label's ipset.
 func (c *PodController) syncAddAndUpdatePod(newPodObj *corev1.Pod) error {
+	timer := metrics.StartNewTimer()
+
 	var err error
 	podKey, _ := cache.MetaNamespaceKeyFunc(newPodObj)
 
@@ -442,8 +456,10 @@ func (c *PodController) syncAddAndUpdatePod(newPodObj *corev1.Pod) error {
 	klog.Infof("[syncAddAndUpdatePod] updating Pod with key %s", podKey)
 	// No cached npmPod exists. start adding the pod in a cache
 	if !exists {
+		defer metrics.RecordPodApplyTime(timer, metrics.CreateMode)
 		return c.syncAddedPod(newPodObj)
 	}
+	defer metrics.RecordPodApplyTime(timer, metrics.UpdateMode)
 
 	// Dealing with "updatePod" event - Compare last applied states against current Pod states
 	// There are two possibilities for npmPodObj and newPodObj

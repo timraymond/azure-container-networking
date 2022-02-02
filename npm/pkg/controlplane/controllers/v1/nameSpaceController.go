@@ -270,6 +270,13 @@ func (nsc *NamespaceController) syncNameSpace(key string) error {
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.Infof("NameSpace %s not found, may be it is deleted", key)
+
+			if _, ok := nsc.npmNamespaceCache.NsMap[cachedNsKey]; ok {
+				// record time to delete namespace if it exists (can't call within cleanDeletedNamespace because this can be called by a pod update)
+				timer := metrics.StartNewTimer()
+				defer metrics.RecordNamespaceApplyTime(timer, metrics.DeleteMode)
+			}
+
 			// cleanDeletedNamespace will check if the NS exists in cache, if it does, then proceeds with deletion
 			// if it does not exists, then event will be no-op
 			err = nsc.cleanDeletedNamespace(cachedNsKey)
@@ -283,6 +290,11 @@ func (nsc *NamespaceController) syncNameSpace(key string) error {
 	}
 
 	if nsObj.DeletionTimestamp != nil || nsObj.DeletionGracePeriodSeconds != nil {
+		if _, ok := nsc.npmNamespaceCache.NsMap[cachedNsKey]; ok {
+			// record time to delete namespace if it exists (can't call within cleanDeletedNamespace because this can be called by a pod update)
+			timer := metrics.StartNewTimer()
+			defer metrics.RecordNamespaceApplyTime(timer, metrics.DeleteMode)
+		}
 		return nsc.cleanDeletedNamespace(cachedNsKey)
 	}
 
@@ -348,6 +360,8 @@ func (nsc *NamespaceController) syncAddNameSpace(nsObj *corev1.Namespace) error 
 
 // syncUpdateNameSpace handles updating namespace in ipset.
 func (nsc *NamespaceController) syncUpdateNameSpace(newNsObj *corev1.Namespace) error {
+	timer := metrics.StartNewTimer()
+
 	var err error
 	newNsName, newNsLabel := util.GetNSNameWithPrefix(newNsObj.ObjectMeta.Name), newNsObj.ObjectMeta.Labels
 	klog.Infof("NAMESPACE UPDATING:\n namespace: [%s/%v]", newNsName, newNsLabel)
@@ -358,6 +372,7 @@ func (nsc *NamespaceController) syncUpdateNameSpace(newNsObj *corev1.Namespace) 
 	curNsObj, exists := nsc.npmNamespaceCache.NsMap[newNsName]
 	if !exists {
 		if newNsObj.ObjectMeta.DeletionTimestamp == nil && newNsObj.ObjectMeta.DeletionGracePeriodSeconds == nil {
+			defer metrics.RecordPodApplyTime(timer, metrics.CreateMode)
 			if err = nsc.syncAddNameSpace(newNsObj); err != nil {
 				return err
 			}
@@ -365,6 +380,7 @@ func (nsc *NamespaceController) syncUpdateNameSpace(newNsObj *corev1.Namespace) 
 
 		return nil
 	}
+	defer metrics.RecordPodApplyTime(timer, metrics.UpdateMode)
 
 	// If the Namespace is not deleted, delete removed labels and create new labels
 	addToIPSets, deleteFromIPSets := util.GetIPSetListCompareLabels(curNsObj.LabelsMap, newNsLabel)
