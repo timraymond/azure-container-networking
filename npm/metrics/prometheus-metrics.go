@@ -172,7 +172,8 @@ func InitializeAll() {
 	}
 }
 
-// ReinitializeAll creates/replaces Prometheus metrics. This function is intended for UTs.
+// ReinitializeAll creates/replaces Prometheus metrics.
+// This function is intended for UTs. It will cause error messages ("error creating metric") from trying to re-register each metric.
 // Be sure to reset helper variables e.g. ipsetInventoryMap.
 func ReinitializeAll() {
 	haveInitialized = false
