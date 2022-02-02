@@ -239,7 +239,7 @@ func TestAddMultipleNetworkPolicies(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	addNetPol(t, f, netPolObj1)
 	addNetPol(t, f, netPolObj2)
@@ -261,7 +261,7 @@ func TestAddNetworkPolicy(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	addNetPol(t, f, netPolObj)
 	testCases := []expectedNetPolValues{
@@ -282,7 +282,7 @@ func TestDeleteNetworkPolicy(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	deleteNetPol(t, f, netPolObj, DeletedFinalStateknownObject)
 	testCases := []expectedNetPolValues{
@@ -302,7 +302,7 @@ func TestDeleteNetworkPolicyWithTombstone(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	netPolKey := getKey(netPolObj, t)
 	tombstone := cache.DeletedFinalStateUnknown{
@@ -328,7 +328,7 @@ func TestDeleteNetworkPolicyWithTombstoneAfterAddingNetworkPolicy(t *testing.T) 
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	deleteNetPol(t, f, netPolObj, DeletedFinalStateUnknownObject)
 	testCases := []expectedNetPolValues{
@@ -350,7 +350,7 @@ func TestUpdateNetworkPolicy(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	newNetPolObj := oldNetPolObj.DeepCopy()
 	// oldNetPolObj.ResourceVersion value is "0"
@@ -375,7 +375,7 @@ func TestLabelUpdateNetworkPolicy(t *testing.T) {
 	defer close(stopCh)
 	f.newNetPolController(stopCh)
 
-	// metrics.ReinitializeAll()
+	metrics.ReinitializeAll()
 
 	newNetPolObj := oldNetPolObj.DeepCopy()
 	// update podSelctor in a new network policy field
