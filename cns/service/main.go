@@ -46,8 +46,12 @@ import (
 	"github.com/Azure/azure-container-networking/store"
 	"github.com/avast/retry-go/v3"
 	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -568,12 +572,7 @@ func main() {
 				cns.GlobalPodInfoScheme = cns.InterfaceIDPodInfoScheme
 			}
 		}
-		if cnsconfig.InitializeFromCNI {
-			logger.Printf("Initializing from CNI")
-		} else {
-			logger.Printf("Initializing from Kubernetes")
-		}
-		logger.Printf("Set GlobalPodInfoScheme %v", cns.GlobalPodInfoScheme)
+		logger.Printf("Set GlobalPodInfoScheme %v (InitializeFromCNI=%t)", cns.GlobalPodInfoScheme, cnsconfig.InitializeFromCNI)
 
 		err = InitializeCRDState(rootCtx, httpRestService, cnsconfig)
 		if err != nil {
@@ -822,7 +821,7 @@ type ncStateReconciler interface {
 
 // TODO(rbtr) where should this live??
 // InitCNS initializes cns by passing pods and a createnetworkcontainerrequest
-func initCNS(ctx context.Context, cli nodeNetworkConfigGetter, ncReconciler ncStateReconciler) error {
+func initCNS(ctx context.Context, cli nodeNetworkConfigGetter, ncReconciler ncStateReconciler, podInfoByIPProvider cns.PodInfoByIPProvider) error {
 	// Get nnc using direct client
 	nnc, err := cli.Get(ctx)
 	if err != nil {
@@ -852,22 +851,15 @@ func initCNS(ctx context.Context, cli nodeNetworkConfigGetter, ncReconciler ncSt
 	if err != nil {
 		return errors.Wrap(err, "failed to convert NNC status to network container request")
 	}
-
-	// rebuild CNS state from CNI
-	logger.Printf("initializing CNS from CNI")
-	podInfoByIPProvider, err := cnireconciler.NewCNIPodInfoProvider()
-	if err != nil {
-		return errors.Wrap(err, "failed to create CNI PodInfoProvider")
-	}
+	// rebuild CNS state
 	podInfoByIP, err := podInfoByIPProvider.PodInfoByIP()
 	if err != nil {
-		return errors.Wrap(err, "err in CNS initialization")
+		return errors.Wrap(err, "provider failed to provide PodInfoByIP")
 	}
 
-	// errors.Wrap provides additional context, and return nil if the err input arg is nil
 	// Call cnsclient init cns passing those two things.
 	err = restserver.ResponseCodeToError(ncReconciler.ReconcileNCState(&ncRequest, podInfoByIP, nnc))
-	return errors.Wrap(err, "err in CNS reconciliation")
+	return errors.Wrap(err, "failed to reconcile NC state")
 }
 
 // InitializeCRDState builds and starts the CRD controllers.
@@ -918,11 +910,40 @@ func InitializeCRDState(ctx context.Context, httpRestService cns.HTTPService, cn
 		}
 	}()
 
+	clientset, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		return errors.Wrap(err, "failed to build clientset")
+	}
+
+	var podInfoByIPProvider cns.PodInfoByIPProvider
+	if cnsconfig.InitializeFromCNI {
+		logger.Printf("Initializing from CNI")
+		podInfoByIPProvider, err = cnireconciler.NewCNIPodInfoProvider()
+		if err != nil {
+			return errors.Wrap(err, "failed to create CNI PodInfoProvider")
+		}
+	} else {
+		logger.Printf("Initializing from Kubernetes")
+		podInfoByIPProvider = cns.PodInfoByIPProviderFunc(func() (map[string]cns.PodInfo, error) {
+			pods, err := clientset.CoreV1().Pods("").List(ctx, metav1.ListOptions{ //nolint:govet // ignore err shadow
+				FieldSelector: "spec.nodeName=" + nodeName,
+			})
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to list Pods for PodInfoProvider")
+			}
+			podInfo, err := cns.KubePodsToPodInfoByIP(pods.Items)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to convert Pods to PodInfoByIP")
+			}
+			return podInfo, nil
+		})
+	}
+
 	// apiserver nnc might not be registered or api server might be down and crashloop backof puts us outside of 5-10 minutes we have for
 	// aks addons to come up so retry a bit more aggresively here.
 	// will retry 10 times maxing out at a minute taking about 8 minutes before it gives up.
 	err = retry.Do(func() error {
-		err = initCNS(ctx, scopedcli, httpRestServiceImplementation)
+		err = initCNS(ctx, scopedcli, httpRestServiceImplementation, podInfoByIPProvider)
 		if err != nil {
 			logger.Errorf("[Azure CNS] Failed to init cns with err: %v", err)
 		}
@@ -932,17 +953,39 @@ func InitializeCRDState(ctx context.Context, httpRestService cns.HTTPService, cn
 		return err
 	}
 
+	// the nodeScopedCache sets Selector options on the Manager cache which are used
+	// to perform *server-side* filtering of the cached objects. This is very important
+	// for high node/pod count clusters, as it keeps us from watching objects at the
+	// whole cluster scope when we are only interested in the Node's scope.
+	nodeScopedCache := cache.BuilderWithOptions(cache.Options{
+		SelectorsByObject: cache.SelectorsByObject{
+			&v1alpha.NodeNetworkConfig{}: {
+				Field: fields.SelectorFromSet(fields.Set{"metadata.name": nodeName}),
+			},
+		},
+	})
+
 	manager, err := ctrl.NewManager(kubeConfig, ctrl.Options{
 		Scheme:             nodenetworkconfig.Scheme,
 		MetricsBindAddress: cnsconfig.MetricsBindAddress,
 		Namespace:          "kube-system", // TODO(rbtr): namespace should be in the cns config
+		NewCache:           nodeScopedCache,
 	})
 	if err != nil {
 		return errors.Wrap(err, "failed to create manager")
 	}
+
+	// get our Node so that we can xref it against the NodeNetworkConfig's to make sure that the
+	// NNC is not stale and represents the Node we're running on.
+	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get node %s", nodeName)
+	}
+
 	reconciler := kubecontroller.NewReconciler(nnccli, httpRestServiceImplementation, httpRestServiceImplementation.IPAMPoolMonitor)
-	if err := reconciler.SetupWithManager(manager, nodeName); err != nil {
-		return err
+	// pass Node to the Reconciler for Controller xref
+	if err := reconciler.SetupWithManager(manager, node); err != nil {
+		return errors.Wrapf(err, "failed to setup reconciler with manager")
 	}
 
 	// Start the RequestController which starts the reconcile loop

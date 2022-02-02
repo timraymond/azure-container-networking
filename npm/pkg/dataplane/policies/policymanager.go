@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-container-networking/common"
+	"github.com/Azure/azure-container-networking/npm/metrics"
 	npmerrors "github.com/Azure/azure-container-networking/npm/util/errors"
 	"k8s.io/klog"
 )
@@ -93,15 +94,16 @@ func (pMgr *PolicyManager) GetPolicy(policyKey string) (*NPMNetworkPolicy, bool)
 }
 
 func (pMgr *PolicyManager) AddPolicy(policy *NPMNetworkPolicy, endpointList map[string]string) error {
+	prometheusTimer := metrics.StartNewTimer()
 	if len(policy.ACLs) == 0 {
 		klog.Infof("[DataPlane] No ACLs in policy %s to apply", policy.PolicyKey)
 		return nil
 	}
+	defer metrics.RecordACLRuleExecTime(prometheusTimer) // record execution time regardless of failure
 	NormalizePolicy(policy)
 	if err := ValidatePolicy(policy); err != nil {
 		return npmerrors.Errorf(npmerrors.AddPolicy, false, fmt.Sprintf("couldn't add malformed policy: %s", err.Error()))
 	}
-	klog.Infof("PRINTING-CONTENTS-FOR-ADDING-POLICY:\n%s", policy.String())
 
 	// Call actual dataplane function to apply changes
 	err := pMgr.addPolicy(policy, endpointList)
@@ -119,11 +121,8 @@ func (pMgr *PolicyManager) isFirstPolicy() bool {
 
 func (pMgr *PolicyManager) RemovePolicy(policyKey string, endpointList map[string]string) error {
 	policy, ok := pMgr.GetPolicy(policyKey)
-	klog.Infof("PRINTING-CONTENTS-FOR-REMOVING-POLICY:\n%s", policy.String())
 
 	if !ok {
-		klog.Infof("DEBUGME-POLICY-DOESN'T-EXIST-WHEN-DELETING")
-		klog.Infof("POLICY-CACHE: %+v", pMgr.policyMap.cache)
 		return nil
 	}
 
