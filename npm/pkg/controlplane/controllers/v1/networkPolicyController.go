@@ -233,12 +233,21 @@ func (c *NetworkPolicyController) processNextWorkItem() bool {
 
 // syncNetPol compares the actual state with the desired, and attempts to converge the two.
 func (c *NetworkPolicyController) syncNetPol(key string) error {
+	// timer for recording execution times
+	timer := metrics.StartNewTimer()
+
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
+
+	// record exec time after syncing
+	operationKind := metrics.NoOp
+	defer func() {
+		metrics.RecordControllerPolicyExecTime(timer, operationKind, err != nil)
+	}()
 
 	// Get the network policy resource with this namespace/name
 	netPolObj, err := c.netPolLister.NetworkPolicies(namespace).Get(name)
@@ -248,8 +257,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 
 			if _, ok := c.rawNpMap[key]; ok {
 				// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
-				timer := metrics.StartNewTimer()
-				defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
+				operationKind = metrics.DeleteOp
 			}
 
 			// netPolObj is not found, but should need to check the RawNpMap cache with key.
@@ -268,8 +276,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	if netPolObj.ObjectMeta.DeletionTimestamp != nil || netPolObj.ObjectMeta.DeletionGracePeriodSeconds != nil {
 		if _, ok := c.rawNpMap[key]; ok {
 			// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
-			timer := metrics.StartNewTimer()
-			defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
+			operationKind = metrics.DeleteOp
 		}
 		err = c.cleanUpNetworkPolicy(key, safeToCleanUpAzureNpmChain)
 		if err != nil {
@@ -289,7 +296,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 		}
 	}
 
-	err = c.syncAddAndUpdateNetPol(netPolObj)
+	operationKind, err = c.syncAddAndUpdateNetPol(netPolObj)
 	if err != nil {
 		return fmt.Errorf("[syncNetPol] Error due to  %s\n", err.Error())
 	}
@@ -315,13 +322,12 @@ func (c *NetworkPolicyController) initializeDefaultAzureNpmChain() error {
 }
 
 // syncAddAndUpdateNetPol handles a new network policy or an updated network policy object triggered by add and update events
-func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) error {
-	timer := metrics.StartNewTimer()
-
+func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) (metrics.OperationKind, error) {
 	var err error
 	netpolKey, err := cache.MetaNamespaceKeyFunc(netPolObj)
 	if err != nil {
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: while running MetaNamespaceKeyFunc err: %s", err)
+		// consider a no-op since we can't determine add vs. update. The exec time here isn't important either.
+		return metrics.NoOp, fmt.Errorf("[syncAddAndUpdateNetPol] Error: while running MetaNamespaceKeyFunc err: %s", err)
 	}
 
 	// Start reconciling loop to eventually meet cached states against the desired states from network policy.
@@ -339,23 +345,22 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	// To achieve it, use flag unSafeToCleanUpAzureNpmChain to indicate that the default Azure NPM chain cannot be deleted.
 	// delete existing network policy
 
-	var mode metrics.OperationKind
+	var operationKind metrics.OperationKind
 	if _, ok := c.rawNpMap[netpolKey]; ok {
-		mode = metrics.UpdateOp
+		operationKind = metrics.UpdateOp
 	} else {
-		mode = metrics.CreateOp
+		operationKind = metrics.CreateOp
 	}
-	defer metrics.RecordPolicyExecTime(timer, mode)
 
 	err = c.cleanUpNetworkPolicy(netpolKey, unSafeToCleanUpAzureNpmChain)
 	if err != nil {
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to deleteNetworkPolicy due to %s", err)
+		return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to deleteNetworkPolicy due to %s", err)
 	}
 
 	// Install this default rules for kube-system and azure-npm chains if they are not initilized.
 	// Execute initializeDefaultAzureNpmChain function first before actually starting processing network policy object.
 	if err = c.initializeDefaultAzureNpmChain(); err != nil {
-		return fmt.Errorf("[syncNetPol] Error: due to %v", err)
+		return operationKind, fmt.Errorf("[syncNetPol] Error: due to %v", err)
 	}
 
 	// Cache network object first before applying ipsets and iptables.
@@ -368,13 +373,13 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	for _, set := range sets {
 		klog.Infof("Creating set: %v, hashedSet: %v", set, util.GetHashedName(set))
 		if err = c.ipsMgr.CreateSet(set, []string{util.IpsetNetHashFlag}); err != nil {
-			return fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset %s with err: %v", set, err)
+			return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset %s with err: %v", set, err)
 		}
 	}
 	for _, set := range namedPorts {
 		klog.Infof("Creating set: %v, hashedSet: %v", set, util.GetHashedName(set))
 		if err = c.ipsMgr.CreateSet(set, []string{util.IpsetIPPortHashFlag}); err != nil {
-			return fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset named port %s with err: %v", set, err)
+			return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset named port %s with err: %v", set, err)
 		}
 	}
 
@@ -382,7 +387,7 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	// NPM will create the list first and increments the refer count
 	for listKey := range lists {
 		if err = c.ipsMgr.CreateList(listKey); err != nil {
-			return fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset list %s with err: %v", listKey, err)
+			return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: creating ipset list %s with err: %v", listKey, err)
 		}
 		c.ipsMgr.IpSetReferIncOrDec(listKey, util.IpsetSetListFlag, ipsm.IncrementOp)
 	}
@@ -391,27 +396,27 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	for listKey, listLabelsMembers := range lists {
 		for _, listMember := range listLabelsMembers {
 			if err = c.ipsMgr.AddToList(listKey, listMember); err != nil {
-				return fmt.Errorf("[syncAddAndUpdateNetPol] Error: Adding ipset member %s to ipset list %s with err: %v", listMember, listKey, err)
+				return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: Adding ipset member %s to ipset list %s with err: %v", listMember, listKey, err)
 			}
 		}
 		c.ipsMgr.IpSetReferIncOrDec(listKey, util.IpsetSetListFlag, ipsm.IncrementOp)
 	}
 
 	if err = c.createCidrsRule("in", netPolObj.Name, netPolObj.Namespace, ingressIPCidrs); err != nil {
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: createCidrsRule in due to %v", err)
+		return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: createCidrsRule in due to %v", err)
 	}
 
 	if err = c.createCidrsRule("out", netPolObj.Name, netPolObj.Namespace, egressIPCidrs); err != nil {
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: createCidrsRule out due to %v", err)
+		return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: createCidrsRule out due to %v", err)
 	}
 
 	for _, iptEntry := range iptEntries {
 		if err = c.iptMgr.Add(iptEntry); err != nil {
-			return fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to apply iptables rule. Rule: %+v with err: %v", iptEntry, err)
+			return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to apply iptables rule. Rule: %+v with err: %v", iptEntry, err)
 		}
 	}
 
-	return nil
+	return operationKind, nil
 }
 
 // DeleteNetworkPolicy handles deleting network policy based on netPolKey.

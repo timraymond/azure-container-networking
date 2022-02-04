@@ -23,14 +23,17 @@ func (timer *Timer) stopAndRecord(observer prometheus.Summary) {
 	observer.Observe(timer.timeElapsed())
 }
 
-func (timer *Timer) stopAndRecordCRUDExecTime(observer *prometheus.SummaryVec, op OperationKind) {
+// stopAndRecordCRUDExecTime ends a timer and records its delta in a summary (unless the operation is NoOp) with the specified operation as a label.
+func (timer *Timer) stopAndRecordCRUDExecTime(observer *prometheus.SummaryVec, op OperationKind, hadError bool) {
 	timer.stop()
 	if !op.isValid() {
 		klog.Errorf("Unknown operation [%v] when recording exec time", op)
 		return
 	}
-	labels := prometheus.Labels{operationLabel: string(op)}
-	observer.With(labels).Observe(timer.timeElapsed())
+	if op != NoOp {
+		labels := getCRUDExecTimeLabels(op, hadError)
+		observer.With(labels).Observe(timer.timeElapsed())
+	}
 }
 
 func (timer *Timer) stop() {

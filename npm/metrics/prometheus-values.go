@@ -43,6 +43,17 @@ func getCountVecValue(summaryVecMetric *prometheus.SummaryVec, labels prometheus
 	return getCountValue(collector)
 }
 
+func getCRUDExecTimeLabels(op OperationKind, hadError bool) prometheus.Labels {
+	hadErrorVal := "false"
+	if hadError {
+		hadErrorVal = "true"
+	}
+	return prometheus.Labels{
+		operationLabel: string(op),
+		hadErrorLabel:  hadErrorVal,
+	}
+}
+
 // This function is slow.
 func getQuantiles(summaryMetric prometheus.Summary) ([]*dto.Quantile, error) {
 	dtoMetric, err := getDTOMetric(summaryMetric)

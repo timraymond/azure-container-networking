@@ -1,16 +1,13 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
-
-// RecordPodExecTime adds an observation of pod exec time for the specified operation.
+// RecordControllerPodExecTime adds an observation of pod exec time for the specified operation (unless the operation is NoOp).
 // The execution time is from the timer's start until now.
-func RecordPodExecTime(timer *Timer, op OperationKind) {
-	timer.stopAndRecordCRUDExecTime(controllerPodExecTime, op)
+func RecordControllerPodExecTime(timer *Timer, op OperationKind, hadError bool) {
+	timer.stopAndRecordCRUDExecTime(controllerPodExecTime, op, hadError)
 }
 
-// GetPodExecCount returns the number of observations for pod exec time for the specified operation.
+// GetControllerPodExecCount returns the number of observations for pod exec time for the specified operation.
 // This function is slow.
-func GetPodExecCount(op OperationKind) (int, error) {
-	labels := prometheus.Labels{operationLabel: string(op)}
-	return getCountVecValue(controllerPodExecTime, labels)
+func GetControllerPodExecCount(op OperationKind, hadError bool) (int, error) {
+	return getCountVecValue(controllerPodExecTime, getCRUDExecTimeLabels(op, hadError))
 }

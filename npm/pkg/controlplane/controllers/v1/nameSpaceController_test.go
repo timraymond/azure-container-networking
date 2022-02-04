@@ -3,6 +3,7 @@
 package controllers
 
 import (
+	"flag"
 	"reflect"
 	"testing"
 	"time"
@@ -26,6 +27,9 @@ import (
 var (
 	alwaysReady        = func() bool { return true }
 	noResyncPeriodFunc = func() time.Duration { return 0 }
+
+	// turn on with: go run . --lists-unsupported
+	debugWhenListsUnsupported = flag.Bool("lists-unsupported", false, "Set to true for correct prometheus metrics if ipset lists are unsupported.")
 )
 
 type expectedNsValues struct {
@@ -41,24 +45,37 @@ type nsPromVals struct {
 	expectedDeleteExecCount int
 }
 
-func (p *nsPromVals) testNSPromVals(t *testing.T) {
-	addExecCount, err := metrics.GetNamespaceExecCount(metrics.CreateOp)
+func (p *nsPromVals) testPrometheusMetrics(t *testing.T) {
+	addExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.CreateOp, false)
 	promutil.NotifyIfErrors(t, err)
-	if addExecCount != p.expectedAddExecCount {
-		require.FailNowf(t, "", "Count for add execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedAddExecCount, addExecCount)
-	}
+	require.Equal(t, p.expectedAddExecCount, addExecCount, "Count for add execution time didn't register correctly in Prometheus")
 
-	updateExecCount, err := metrics.GetNamespaceExecCount(metrics.UpdateOp)
+	addErrorExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.CreateOp, true)
 	promutil.NotifyIfErrors(t, err)
-	if updateExecCount != p.expectedUpdateExecCount {
-		require.FailNowf(t, "", "Count for update execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedUpdateExecCount, updateExecCount)
-	}
+	require.Equal(t, 0, addErrorExecCount, "Count for add error execution time should be 0")
 
-	deleteExecCount, err := metrics.GetNamespaceExecCount(metrics.DeleteOp)
+	updateExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.UpdateOp, flipBool(false, *debugWhenListsUnsupported))
 	promutil.NotifyIfErrors(t, err)
-	if deleteExecCount != p.expectedDeleteExecCount {
-		require.FailNowf(t, "", "Count for delete execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedDeleteExecCount, deleteExecCount)
+	require.Equal(t, p.expectedUpdateExecCount, updateExecCount, "Count for update execution time didn't register correctly in Prometheus")
+
+	updateErrorExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.UpdateOp, flipBool(true, *debugWhenListsUnsupported))
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, 0, updateErrorExecCount, "Count for update error execution time should be 0")
+
+	deleteExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.DeleteOp, flipBool(false, *debugWhenListsUnsupported))
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, p.expectedDeleteExecCount, deleteExecCount, "Count for delete execution time didn't register correctly in Prometheus")
+
+	deleteErrorExecCount, err := metrics.GetControllerNamespaceExecCount(metrics.DeleteOp, flipBool(true, *debugWhenListsUnsupported))
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, 0, deleteErrorExecCount, "Count for delete error execution time should be 0")
+}
+
+func flipBool(b, shouldFlip bool) bool {
+	if shouldFlip {
+		return !b
 	}
+	return b
 }
 
 type nameSpaceFixture struct {
@@ -537,7 +554,7 @@ func checkNsTestResult(testName string, f *nameSpaceFixture, testCases []expecte
 		if got := f.nsController.workqueue.Len(); got != test.expectedLenOfWorkQueue {
 			f.t.Errorf("Workqueue length = %d, want %d", got, test.expectedLenOfWorkQueue)
 		}
-		test.nsPromVals.testNSPromVals(f.t)
+		test.nsPromVals.testPrometheusMetrics(f.t)
 	}
 }
 

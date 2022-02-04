@@ -42,7 +42,9 @@ const (
 
 	// perf metrics added after v1.4.16
 	// all these metrics have "npm_controller_" prepended to their name
-	operationLabel               = "operation"
+	operationLabel = "operation"
+	hadErrorLabel  = "had_error"
+
 	policyExecTimeName           = "policy_exec_time"
 	controllerPolicyExecTimeHelp = "Execution time in milliseconds for updating/deleting a network policy. NOTE: for adding, see npm_add_policy_exec_time"
 
@@ -67,28 +69,28 @@ const (
 // For any Vector metric, you can call With(prometheus.Labels) before the above methods
 //   e.g. SomeGaugeVec.With(prometheus.Labels{label1: val1, label2: val2, ...).Dec()
 var (
-	// quantiles e.g. the "0.5 quantile" with delta 0.05 will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
-	execTimeQuantiles        = map[float64]float64{quantileMedian: deltaMedian, quantile90th: delta90th, quantil99th: delta99th}
-	ipsetInventoryLabels     = []string{setNameLabel, setHashLabel}
-	controllerExecTimeLabels = []string{operationLabel}
-
 	nodeRegistry    = prometheus.NewRegistry()
 	clusterRegistry = prometheus.NewRegistry()
 	haveInitialized = false
 
-	numPolicies        prometheus.Gauge
-	addPolicyExecTime  prometheus.Summary
-	numACLRules        prometheus.Gauge
-	addACLRuleExecTime prometheus.Summary
-	numIPSets          prometheus.Gauge
-	addIPSetExecTime   prometheus.Summary
-	numIPSetEntries    prometheus.Gauge
-	ipsetInventory     *prometheus.GaugeVec
+	// quantiles e.g. the "0.5 quantile" with delta 0.05 will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
+	execTimeQuantiles = map[float64]float64{quantileMedian: deltaMedian, quantile90th: delta90th, quantil99th: delta99th}
+
+	numPolicies          prometheus.Gauge
+	addPolicyExecTime    prometheus.Summary
+	numACLRules          prometheus.Gauge
+	addACLRuleExecTime   prometheus.Summary
+	numIPSets            prometheus.Gauge
+	addIPSetExecTime     prometheus.Summary
+	numIPSetEntries      prometheus.Gauge
+	ipsetInventory       *prometheus.GaugeVec
+	ipsetInventoryLabels = []string{setNameLabel, setHashLabel}
 
 	// perf metrics added after v1.4.16
 	controllerPolicyExecTime    *prometheus.SummaryVec
 	controllerPodExecTime       *prometheus.SummaryVec
 	controllerNamespaceExecTime *prometheus.SummaryVec
+	controllerExecTimeLabels    = []string{operationLabel, hadErrorLabel}
 
 	// TODO add health metrics
 )
@@ -106,11 +108,12 @@ const (
 	CreateOp OperationKind = "create"
 	UpdateOp OperationKind = "update"
 	DeleteOp OperationKind = "delete"
+	NoOp     OperationKind = "noop"
 )
 
 func (op OperationKind) isValid() bool {
 	switch op {
-	case CreateOp, UpdateOp, DeleteOp:
+	case CreateOp, UpdateOp, DeleteOp, NoOp:
 		return true
 	default:
 		return false
@@ -183,18 +186,18 @@ func initializeControllerMetrics() {
 	controllerNamespaceExecTime = createControllerNodeSummaryVec(namespaceExecTimeName, controllerNamespaceExecTimeHelp, controllerExecTimeLabels)
 }
 
-func getRegistry(registryType RegistryType) *prometheus.Registry {
-	if registryType == NodeMetrics {
-		return nodeRegistry
-	}
-	return clusterRegistry
-}
-
 func register(collector prometheus.Collector, name string, registryType RegistryType) {
 	err := getRegistry(registryType).Register(collector)
 	if err != nil {
 		log.Errorf("Error creating metric %s", name)
 	}
+}
+
+func getRegistry(registryType RegistryType) *prometheus.Registry {
+	if registryType == NodeMetrics {
+		return nodeRegistry
+	}
+	return clusterRegistry
 }
 
 func createClusterGauge(name, helpMessage string) prometheus.Gauge {

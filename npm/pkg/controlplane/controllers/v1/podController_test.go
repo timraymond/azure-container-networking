@@ -189,23 +189,29 @@ type podPromVals struct {
 }
 
 func (p *podPromVals) testPrometheusMetrics(t *testing.T) {
-	addExecCount, err := metrics.GetPodExecCount(metrics.CreateOp)
+	addExecCount, err := metrics.GetControllerPodExecCount(metrics.CreateOp, false)
 	promutil.NotifyIfErrors(t, err)
-	if addExecCount != p.expectedAddExecCount {
-		require.FailNowf(t, "", "Count for add execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedAddExecCount, addExecCount)
-	}
+	require.Equal(t, p.expectedAddExecCount, addExecCount, "Count for add execution time didn't register correctly in Prometheus")
 
-	updateExecCount, err := metrics.GetPodExecCount(metrics.UpdateOp)
+	addErrorExecCount, err := metrics.GetControllerPodExecCount(metrics.CreateOp, true)
 	promutil.NotifyIfErrors(t, err)
-	if updateExecCount != p.expectedUpdateExecCount {
-		require.FailNowf(t, "", "Count for update execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedUpdateExecCount, updateExecCount)
-	}
+	require.Equal(t, 0, addErrorExecCount, "Count for add error execution time should be 0")
 
-	deleteExecCount, err := metrics.GetPodExecCount(metrics.DeleteOp)
+	updateExecCount, err := metrics.GetControllerPodExecCount(metrics.UpdateOp, false)
 	promutil.NotifyIfErrors(t, err)
-	if deleteExecCount != p.expectedDeleteExecCount {
-		require.FailNowf(t, "", "Count for delete execution time didn't register correctly in Prometheus. Expected %d. Got %d.", p.expectedDeleteExecCount, deleteExecCount)
-	}
+	require.Equal(t, p.expectedUpdateExecCount, updateExecCount, "Count for update execution time didn't register correctly in Prometheus")
+
+	updateErrorExecCount, err := metrics.GetControllerPodExecCount(metrics.UpdateOp, true)
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, 0, updateErrorExecCount, "Count for update error execution time should be 0")
+
+	deleteExecCount, err := metrics.GetControllerPodExecCount(metrics.DeleteOp, false)
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, p.expectedDeleteExecCount, deleteExecCount, "Count for delete execution time didn't register correctly in Prometheus")
+
+	deleteErrorExecCount, err := metrics.GetControllerPodExecCount(metrics.DeleteOp, true)
+	promutil.NotifyIfErrors(t, err)
+	require.Equal(t, 0, deleteErrorExecCount, "Count for delete error execution time should be 0")
 }
 
 func checkPodTestResult(testName string, f *podFixture, testCases []expectedValues) {

@@ -1,7 +1,5 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
-
 // IncNumPolicies increments the number of policies.
 func IncNumPolicies() {
 	numPolicies.Inc()
@@ -17,13 +15,13 @@ func ResetNumPolicies() {
 	numPolicies.Set(0)
 }
 
-// RecordPolicyExecTime adds an observation of policy exec time for the specified operation.
+// RecordControllerPolicyExecTime adds an observation of policy exec time  (unless the operation is NoOp).
 // The execution time is from the timer's start until now.
-func RecordPolicyExecTime(timer *Timer, op OperationKind) {
+func RecordControllerPolicyExecTime(timer *Timer, op OperationKind, hadError bool) {
 	if op == CreateOp {
 		timer.stopAndRecord(addPolicyExecTime)
 	} else {
-		timer.stopAndRecordCRUDExecTime(controllerPolicyExecTime, op)
+		timer.stopAndRecordCRUDExecTime(controllerPolicyExecTime, op, hadError)
 	}
 }
 
@@ -33,12 +31,11 @@ func GetNumPolicies() (int, error) {
 	return getValue(numPolicies)
 }
 
-// GetPolicyExecCount returns the number of observations for policy exec time for the specified operation.
+// GetControllerPolicyExecCount returns the number of observations for policy exec time for the specified operation.
 // This function is slow.
-func GetPolicyExecCount(op OperationKind) (int, error) {
+func GetControllerPolicyExecCount(op OperationKind, hadError bool) (int, error) {
 	if op == CreateOp {
 		return getCountValue(addPolicyExecTime)
 	}
-	labels := prometheus.Labels{operationLabel: string(op)}
-	return getCountVecValue(controllerPolicyExecTime, labels)
+	return getCountVecValue(controllerPolicyExecTime, getCRUDExecTimeLabels(op, hadError))
 }

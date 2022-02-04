@@ -194,12 +194,21 @@ func (c *NetworkPolicyController) processNextWorkItem() bool {
 
 // syncNetPol compares the actual state with the desired, and attempts to converge the two.
 func (c *NetworkPolicyController) syncNetPol(key string) error {
+	// timer for recording execution times
+	timer := metrics.StartNewTimer()
+
 	// Convert the namespace/name string into a distinct namespace and name
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s err: %w", key, errNetPolKeyFormat))
 		return nil //nolint HandleError  is used instead of returning error to caller
 	}
+
+	// record exec time after syncing
+	operationKind := metrics.NoOp
+	defer func() {
+		metrics.RecordControllerPolicyExecTime(timer, operationKind, err != nil)
+	}()
 
 	// Get the network policy resource with this namespace/name
 	netPolObj, err := c.netPolLister.NetworkPolicies(namespace).Get(name)
@@ -209,8 +218,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 
 			if _, ok := c.rawNpSpecMap[key]; ok {
 				// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
-				timer := metrics.StartNewTimer()
-				defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
+				operationKind = metrics.DeleteOp
 			}
 
 			// netPolObj is not found, but should need to check the RawNpMap cache with key.
@@ -229,8 +237,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 	if netPolObj.ObjectMeta.DeletionTimestamp != nil || netPolObj.ObjectMeta.DeletionGracePeriodSeconds != nil {
 		if _, ok := c.rawNpSpecMap[key]; ok {
 			// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
-			timer := metrics.StartNewTimer()
-			defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
+			operationKind = metrics.DeleteOp
 		}
 		err = c.cleanUpNetworkPolicy(key)
 		if err != nil {
@@ -250,7 +257,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 		}
 	}
 
-	err = c.syncAddAndUpdateNetPol(netPolObj)
+	operationKind, err = c.syncAddAndUpdateNetPol(netPolObj)
 	if err != nil {
 		return fmt.Errorf("[syncNetPol] error due to  %w", err)
 	}
@@ -259,13 +266,12 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 }
 
 // syncAddAndUpdateNetPol handles a new network policy or an updated network policy object triggered by add and update events
-func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) error {
-	timer := metrics.StartNewTimer()
-
+func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1.NetworkPolicy) (metrics.OperationKind, error) {
 	var err error
 	netpolKey, err := cache.MetaNamespaceKeyFunc(netPolObj)
 	if err != nil {
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: while running MetaNamespaceKeyFunc err: %w", err)
+		// consider a no-op since we can't determine add vs. update. The exec time here isn't important either.
+		return metrics.NoOp, fmt.Errorf("[syncAddAndUpdateNetPol] Error: while running MetaNamespaceKeyFunc err: %w", err)
 	}
 
 	// install translated rules into kernel
@@ -274,20 +280,21 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 		if errors.Is(err, translation.ErrUnsupportedNamedPort) || errors.Is(err, translation.ErrUnsupportedNegativeMatch) {
 			// We can safely suppress unsupported network policy because re-Queuing will result in same error
 			klog.Warningf("NetworkPolicy %s in namespace %s is not translated because it has unsupported translated features of Windows.", netPolObj.ObjectMeta.Name, netPolObj.ObjectMeta.Namespace)
-			return nil
+			// consider a no-op since we the policy is unsupported. The exec time here isn't important either.
+			return metrics.NoOp, nil
 		}
 		klog.Errorf("Failed to translate podSelector in NetworkPolicy %s in namespace %s: %s", netPolObj.ObjectMeta.Name, netPolObj.ObjectMeta.Namespace, err.Error())
-		return errNetPolTranslationFailure
+		// consider a no-op since we can't translate. The exec time here isn't important either.
+		return metrics.NoOp, errNetPolTranslationFailure
 	}
 
 	_, policyExisted := c.rawNpSpecMap[netpolKey]
-	var mode metrics.OperationKind
+	var operationKind metrics.OperationKind
 	if policyExisted {
-		mode = metrics.UpdateOp
+		operationKind = metrics.UpdateOp
 	} else {
-		mode = metrics.CreateOp
+		operationKind = metrics.CreateOp
 	}
-	defer metrics.RecordPolicyExecTime(timer, mode)
 
 	// install translated rules into Dataplane
 	// DP update policy call will check if this policy already exists in kernel
@@ -297,7 +304,7 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	if err != nil {
 		// if error occurred the key is re-queued in workqueue and process this function again,
 		// which eventually meets desired states of network policy
-		return fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to update translated NPMNetworkPolicy into Dataplane due to %w", err)
+		return operationKind, fmt.Errorf("[syncAddAndUpdateNetPol] Error: failed to update translated NPMNetworkPolicy into Dataplane due to %w", err)
 	}
 
 	if !policyExisted {
@@ -306,7 +313,7 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	}
 
 	c.rawNpSpecMap[netpolKey] = &netPolObj.Spec
-	return nil
+	return operationKind, nil
 }
 
 // DeleteNetworkPolicy handles deleting network policy based on netPolKey.

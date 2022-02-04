@@ -2,9 +2,9 @@ package metrics
 
 import "testing"
 
-func TestRecordPodExecTime(t *testing.T) {
+func TestRecordControllerPodExecTime(t *testing.T) {
 	testStopAndRecordCRUDExecTime(t, &crudExecMetric{
-		RecordPodExecTime,
-		GetPodExecCount,
+		RecordControllerPodExecTime,
+		GetControllerPodExecCount,
 	})
 }

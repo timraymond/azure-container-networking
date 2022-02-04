@@ -195,7 +195,7 @@ func testPrometheusMetrics(t *testing.T, expectedNumPolicies, expectedExecCount 
 	}
 
 	// FIXME update UTs for prometheus metrics like in v1
-	execCount, err := metrics.GetPolicyExecCount(metrics.CreateOp)
+	execCount, err := metrics.GetControllerPolicyExecCount(metrics.CreateOp, false)
 	promutil.NotifyIfErrors(t, err)
 	if execCount != expectedExecCount {
 		require.FailNowf(t, "", "Count for execution time didn't register correctly in Prometheus. Expected %d. Got %d.", expectedExecCount, execCount)
