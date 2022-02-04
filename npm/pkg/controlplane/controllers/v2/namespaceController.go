@@ -266,7 +266,7 @@ func (nsc *NamespaceController) syncNamespace(nsKey string) error {
 			if _, ok := nsc.npmNamespaceCache.NsMap[nsKey]; ok {
 				// record time to delete namespace if it exists (can't call within cleanDeletedNamespace because this can be called by a pod update)
 				timer := metrics.StartNewTimer()
-				defer metrics.RecordNamespaceApplyTime(timer, metrics.DeleteMode)
+				defer metrics.RecordNamespaceExecTime(timer, metrics.DeleteOp)
 			}
 
 			// cleanDeletedNamespace will check if the NS exists in cache, if it does, then proceeds with deletion
@@ -285,7 +285,7 @@ func (nsc *NamespaceController) syncNamespace(nsKey string) error {
 		if _, ok := nsc.npmNamespaceCache.NsMap[nsKey]; ok {
 			// record time to delete namespace if it exists (can't call within cleanDeletedNamespace because this can be called by a pod update)
 			timer := metrics.StartNewTimer()
-			defer metrics.RecordNamespaceApplyTime(timer, metrics.DeleteMode)
+			defer metrics.RecordNamespaceExecTime(timer, metrics.DeleteOp)
 		}
 		return nsc.cleanDeletedNamespace(nsKey)
 	}
@@ -351,7 +351,7 @@ func (nsc *NamespaceController) syncUpdateNamespace(newNsObj *corev1.Namespace) 
 	curNsObj, exists := nsc.npmNamespaceCache.NsMap[newNsName]
 	if !exists {
 		if newNsObj.ObjectMeta.DeletionTimestamp == nil && newNsObj.ObjectMeta.DeletionGracePeriodSeconds == nil {
-			defer metrics.RecordPodApplyTime(timer, metrics.CreateMode)
+			defer metrics.RecordNamespaceExecTime(timer, metrics.CreateOp)
 			if er := nsc.syncAddNamespace(newNsObj); er != nil {
 				return fmt.Errorf("failed to sync add namespace with err %w", err)
 			}
@@ -359,7 +359,7 @@ func (nsc *NamespaceController) syncUpdateNamespace(newNsObj *corev1.Namespace) 
 
 		return nil
 	}
-	defer metrics.RecordPodApplyTime(timer, metrics.UpdateMode)
+	defer metrics.RecordNamespaceExecTime(timer, metrics.UpdateOp)
 
 	// If the Namespace is not deleted, delete removed labels and create new labels
 	addToIPSets, deleteFromIPSets := util.GetIPSetListCompareLabels(curNsObj.LabelsMap, newNsLabel)

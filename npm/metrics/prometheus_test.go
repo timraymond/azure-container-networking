@@ -28,9 +28,9 @@ type recordingMetric struct {
 	getCount func() (int, error)
 }
 
-type applyMetric struct {
-	record   func(timer *Timer, mode ApplyMode)
-	getCount func(mode ApplyMode) (int, error)
+type crudExecMetric struct {
+	record   func(timer *Timer, op OperationKind)
+	getCount func(op OperationKind) (int, error)
 }
 
 func assertMetricVal(t *testing.T, metric *basicMetric, expectedVal int) {
@@ -63,8 +63,8 @@ func testResetMetric(t *testing.T, metric *basicMetric) {
 	assertMetricVal(t, metric, 0)
 }
 
-func testStopAndRecordApplyTime(t *testing.T, m *applyMetric) {
-	for _, mode := range []ApplyMode{CreateMode, UpdateMode, DeleteMode} {
+func testStopAndRecordCRUDExecTime(t *testing.T, m *crudExecMetric) {
+	for _, mode := range []OperationKind{CreateOp, UpdateOp, DeleteOp} {
 		testStopAndRecord(t, &recordingMetric{
 			func(timer *Timer) {
 				m.record(timer, mode)

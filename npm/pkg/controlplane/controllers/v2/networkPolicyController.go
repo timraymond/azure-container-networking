@@ -210,7 +210,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 			if _, ok := c.rawNpSpecMap[key]; ok {
 				// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
 				timer := metrics.StartNewTimer()
-				defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+				defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
 			}
 
 			// netPolObj is not found, but should need to check the RawNpMap cache with key.
@@ -230,7 +230,7 @@ func (c *NetworkPolicyController) syncNetPol(key string) error {
 		if _, ok := c.rawNpSpecMap[key]; ok {
 			// record time to delete policy if it exists (can't call within cleanUpNetworkPolicy because this can be called by a pod update)
 			timer := metrics.StartNewTimer()
-			defer metrics.RecordPolicyApplyTime(timer, metrics.DeleteMode)
+			defer metrics.RecordPolicyExecTime(timer, metrics.DeleteOp)
 		}
 		err = c.cleanUpNetworkPolicy(key)
 		if err != nil {
@@ -281,13 +281,13 @@ func (c *NetworkPolicyController) syncAddAndUpdateNetPol(netPolObj *networkingv1
 	}
 
 	_, policyExisted := c.rawNpSpecMap[netpolKey]
-	var mode metrics.ApplyMode
+	var mode metrics.OperationKind
 	if policyExisted {
-		mode = metrics.UpdateMode
+		mode = metrics.UpdateOp
 	} else {
-		mode = metrics.CreateMode
+		mode = metrics.CreateOp
 	}
-	defer metrics.RecordPolicyApplyTime(timer, mode)
+	defer metrics.RecordPolicyExecTime(timer, mode)
 
 	// install translated rules into Dataplane
 	// DP update policy call will check if this policy already exists in kernel

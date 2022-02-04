@@ -4,10 +4,10 @@ import "testing"
 
 var numPoliciesMetric = &basicMetric{ResetNumPolicies, IncNumPolicies, DecNumPolicies, GetNumPolicies}
 
-func TestRecordPolicyApplyTime(t *testing.T) {
-	testStopAndRecordApplyTime(t, &applyMetric{
-		RecordPolicyApplyTime,
-		GetPolicyApplyCount,
+func TestRecordPolicyExecTime(t *testing.T) {
+	testStopAndRecordCRUDExecTime(t, &crudExecMetric{
+		RecordPolicyExecTime,
+		GetPolicyExecCount,
 	})
 }
 

@@ -9,53 +9,16 @@ import (
 	"k8s.io/klog"
 )
 
+// Constants for metric names and descriptions as well as exported labels for Vector metrics
 const (
-	namespace                = "npm"
-	dataplaneHealthSubsystem = "dataplane_health"
-)
+	namespace        = "npm"
+	controllerPrefix = "controller"
 
-// Prometheus Metrics
-// Gauge metrics have the methods Inc(), Dec(), and Set(float64)
-// Summary metrics have the method Observe(float64)
-// For any Vector metric, you can call With(prometheus.Labels) before the above methods
-//   e.g. SomeGaugeVec.With(prometheus.Labels{label1: val1, label2: val2, ...).Dec()
-
-// Customer cluster and node metrics
-var (
-	numPolicies        prometheus.Gauge
-	addPolicyExecTime  prometheus.Summary
-	numACLRules        prometheus.Gauge
-	addACLRuleExecTime prometheus.Summary
-	numIPSets          prometheus.Gauge
-	addIPSetExecTime   prometheus.Summary
-	numIPSetEntries    prometheus.Gauge
-	ipsetInventory     *prometheus.GaugeVec
-
-	policyApplyTime    *prometheus.SummaryVec
-	podApplyTime       *prometheus.SummaryVec
-	namespaceApplyTime *prometheus.SummaryVec
-
-	execTimeQuantiles = map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001}
-)
-
-// Constants for customer cluster and node metric names and descriptions as well as exported labels for Vector metrics
-const (
 	numPoliciesName = "num_policies"
 	numPoliciesHelp = "The number of current network policies for this node"
 
 	addPolicyExecTimeName = "add_policy_exec_time"
 	addPolicyExecTimeHelp = "Execution time in milliseconds for adding a network policy"
-
-	// TODO do update/delete
-	policyApplyTimeName = "policy_apply_time"
-	policyApplyTimeHelp = "Execution time in milliseconds for updating/deleting a network policy. NOTE: for apply time for adding, see add_policy_exec_time"
-	applyModeLabel      = "apply_mode"
-
-	podApplyTimeName = "pod_apply_time"
-	podApplyTimeHelp = "Execution time in milliseconds for adding/updating/deleting a pod"
-
-	namespaceApplyTimeName = "namespace_apply_time"
-	namespaceApplyTimeHelp = "Execution time in milliseconds for adding/updating/deleting a namespace"
 
 	numACLRulesName = "num_iptables_rules"
 	numACLRulesHelp = "The number of current IPTable rules for this node"
@@ -76,109 +39,108 @@ const (
 	ipsetInventoryHelp = "The number of entries in each individual IPSet"
 	setNameLabel       = "set_name"
 	setHashLabel       = "set_hash"
+
+	// perf metrics added after v1.4.16
+	// all these metrics have "npm_controller_" prepended to their name
+	operationLabel               = "operation"
+	policyExecTimeName           = "policy_exec_time"
+	controllerPolicyExecTimeHelp = "Execution time in milliseconds for updating/deleting a network policy. NOTE: for adding, see npm_add_policy_exec_time"
+
+	podExecTimeName           = "pod_exec_time"
+	controllerPodExecTimeHelp = "Execution time in milliseconds for adding/updating/deleting a pod"
+
+	namespaceExecTimeName           = "namespace_exec_time"
+	controllerNamespaceExecTimeHelp = "Execution time in milliseconds for adding/updating/deleting a namespace"
+
+	// TODO add health metrics
+
+	quantileMedian float64 = 0.5
+	deltaMedian    float64 = 0.05
+	quantile90th   float64 = 0.9
+	delta90th      float64 = 0.01
+	quantil99th    float64 = 0.99
+	delta99th      float64 = 0.001
 )
 
-// Dataplane health metrics
+// Gauge metrics have the methods Inc(), Dec(), and Set(float64)
+// Summary metrics have the method Observe(float64)
+// For any Vector metric, you can call With(prometheus.Labels) before the above methods
+//   e.g. SomeGaugeVec.With(prometheus.Labels{label1: val1, label2: val2, ...).Dec()
 var (
-	numApplyIPSetFailures         *prometheus.CounterVec
-	numAddPolicyFailures          *prometheus.CounterVec
-	numDeletePolicyFailures       *prometheus.CounterVec
-	numPeriodicPolicyTaskFailures *prometheus.CounterVec
-	numValidatePolicyFailures     *prometheus.CounterVec
-	numValidateIPSetFailures      *prometheus.CounterVec
-)
+	// quantiles e.g. the "0.5 quantile" with delta 0.05 will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
+	execTimeQuantiles        = map[float64]float64{quantileMedian: deltaMedian, quantile90th: delta90th, quantil99th: delta99th}
+	ipsetInventoryLabels     = []string{setNameLabel, setHashLabel}
+	controllerExecTimeLabels = []string{operationLabel}
 
-// Constants for DataplaneHealthMetrics names and descriptions as well as exported labels for Vector metrics
-const (
-	numApplyIPSetFailuresName = "num_apply_ipset_failures"
-	numApplyIPSetFailuresHelp = "The number of times the dataplane failed to apply ipsets"
-
-	numAddPolicyFailuresName = "num_add_policy_failures"
-	numAddPolicyFailuresHelp = "The number of times the dataplane failed to add a network policy"
-
-	numDeletePolicyFailuresName = "num_delete_policy_failures"
-	numDeletePolicyFailuresHelp = "The number of times the dataplane failed to delete a network policy"
-
-	numPeriodicPolicyTaskFailuresName = "num_periodic_policy_task_failures"
-	numPeriodicPolicyTaskFailuresHelp = "The number of times the dataplane failed to run a periodic policy task"
-
-	numValidatePolicyFailuresName = "num_validate_policy_failures"
-	numValidatePolicyFailuresHelp = "The number of times the dataplane failed to validate a network policy"
-
-	numValidateIPSetFailuresName = "num_validate_ipset_failures"
-	numValidateIPSetFailuresHelp = "The number of times the dataplane failed to validate an ipset"
-
-	errorTypeLabel = "error_type"
-)
-
-type RegistryType string
-
-const (
-	CustomerNodeMetrics    RegistryType = "customer-node"
-	CustomerClusterMetrics RegistryType = "customer-cluster"
-	DataplaneHealthMetrics RegistryType = "dataplane-health"
-)
-
-var (
-	allRegistries   = []RegistryType{CustomerNodeMetrics, CustomerClusterMetrics, DataplaneHealthMetrics}
-	registries      = make(map[RegistryType]*prometheus.Registry)
+	nodeRegistry    = prometheus.NewRegistry()
+	clusterRegistry = prometheus.NewRegistry()
 	haveInitialized = false
+
+	numPolicies        prometheus.Gauge
+	addPolicyExecTime  prometheus.Summary
+	numACLRules        prometheus.Gauge
+	addACLRuleExecTime prometheus.Summary
+	numIPSets          prometheus.Gauge
+	addIPSetExecTime   prometheus.Summary
+	numIPSetEntries    prometheus.Gauge
+	ipsetInventory     *prometheus.GaugeVec
+
+	// perf metrics added after v1.4.16
+	controllerPolicyExecTime    *prometheus.SummaryVec
+	controllerPodExecTime       *prometheus.SummaryVec
+	controllerNamespaceExecTime *prometheus.SummaryVec
+
+	// TODO add health metrics
 )
 
-type ApplyMode string
+type RegistryType bool
 
 const (
-	CreateMode ApplyMode = "create"
-	UpdateMode ApplyMode = "update"
-	DeleteMode ApplyMode = "delete"
+	NodeMetrics    RegistryType = false
+	ClusterMetrics RegistryType = true
 )
 
-var knownApplyModes = map[ApplyMode]struct{}{
-	CreateMode: {},
-	UpdateMode: {},
-	DeleteMode: {},
+type OperationKind string
+
+const (
+	CreateOp OperationKind = "create"
+	UpdateOp OperationKind = "update"
+	DeleteOp OperationKind = "delete"
+)
+
+func (op OperationKind) isValid() bool {
+	switch op {
+	case CreateOp, UpdateOp, DeleteOp:
+		return true
+	default:
+		return false
+	}
 }
 
-// InitializeAll creates all the Prometheus Metrics. The metrics will be nil before this method is called.
+// InitializeAll creates the Controller and Daemon Prometheus Metrics.
+// The metrics will be nil before this method is called.
+// TODO consider refactoring the functionality of the metrics package into a "Metrics" struct with methods (this would require code changes throughout npm).
+// Would need to consider how it seems like you can't register a metric twice, even in a separate registry, so you couldn't throw away the Metrics struct and create a new one.
 func InitializeAll() {
-	if !haveInitialized {
-		// TODO optimize to only create the registries/metrics that are needed?
-		createRegistries()
-
-		// customer node and cluster metrics
-		numPolicies = createGauge(numPoliciesName, numPoliciesHelp, CustomerClusterMetrics)
-		addPolicyExecTime = createSummary(addPolicyExecTimeName, addPolicyExecTimeHelp, CustomerNodeMetrics)
-		numACLRules = createGauge(numACLRulesName, numACLRulesHelp, CustomerClusterMetrics)
-		addACLRuleExecTime = createSummary(addACLRuleExecTimeName, addACLRuleExecTimeHelp, CustomerNodeMetrics)
-		numIPSets = createGauge(numIPSetsName, numIPSetsHelp, CustomerClusterMetrics)
-		addIPSetExecTime = createSummary(addIPSetExecTimeName, addIPSetExecTimeHelp, CustomerNodeMetrics)
-		numIPSetEntries = createGauge(numIPSetEntriesName, numIPSetEntriesHelp, CustomerClusterMetrics)
-		ipsetInventory = createGaugeVec(ipsetInventoryName, ipsetInventoryHelp, CustomerClusterMetrics, setNameLabel, setHashLabel)
-
-		policyApplyTime = createSummaryVec(policyApplyTimeName, policyApplyTimeHelp, CustomerNodeMetrics, applyModeLabel)
-		podApplyTime = createSummaryVec(podApplyTimeName, podApplyTimeHelp, CustomerNodeMetrics, applyModeLabel)
-		namespaceApplyTime = createSummaryVec(namespaceApplyTimeName, namespaceApplyTimeHelp, CustomerNodeMetrics, applyModeLabel)
-
-		// vanilla dataplane health metrics
-		numApplyIPSetFailures = createDataplaneHealthCounterVec(numApplyIPSetFailuresName, numApplyIPSetFailuresHelp)
-		numAddPolicyFailures = createDataplaneHealthCounterVec(numAddPolicyFailuresName, numAddPolicyFailuresHelp)
-		numDeletePolicyFailures = createDataplaneHealthCounterVec(numDeletePolicyFailuresName, numDeletePolicyFailuresHelp)
-		numPeriodicPolicyTaskFailures = createDataplaneHealthCounterVec(numPeriodicPolicyTaskFailuresName, numPeriodicPolicyTaskFailuresHelp)
-		numValidatePolicyFailures = createDataplaneHealthCounterVec(numValidatePolicyFailuresName, numValidatePolicyFailuresHelp)
-		numValidateIPSetFailures = createDataplaneHealthCounterVec(numValidateIPSetFailuresName, numValidateIPSetFailuresHelp)
-
+	// TODO introduce isFanOut parameter to determine when to create fan-out controller/daemon metrics
+	if haveInitialized {
+		klog.Infof("metrics have already been initialized")
+	} else {
+		initializeDaemonMetrics()
+		initializeControllerMetrics()
+		// TODO include dataplane health metrics:
+		// num failures for apply ipsets, updating policies, deleting policies, and running periodic policy tasks, etc.
 		log.Logf("Finished initializing all Prometheus metrics")
 		haveInitialized = true
 	}
 }
 
 // ReinitializeAll creates/replaces Prometheus metrics.
-// This function is intended for UTs. It will cause error messages ("error creating metric") from trying to re-register each metric.
-// Be sure to reset helper variables e.g. ipsetInventoryMap.
+// This function is intended for UTs.
 func ReinitializeAll() {
+	klog.Infof("reinitializing Prometheus metrics. This may cause error messages of the form: 'error creating metric' from trying to re-register each metric")
 	haveInitialized = false
 	InitializeAll()
-	ipsetInventoryMap = make(map[string]int)
 }
 
 // GetHandler returns the HTTP handler for the metrics endpoint
@@ -188,25 +150,54 @@ func GetHandler(registryType RegistryType) http.Handler {
 		klog.Infof("in GetHandler, metrics weren't initialized. Initializing now")
 		InitializeAll()
 	}
-	registry := registries[registryType]
-	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
+	return promhttp.HandlerFor(getRegistry(registryType), promhttp.HandlerOpts{})
 }
 
-func createRegistries() {
-	for _, registryType := range allRegistries {
-		registries[registryType] = prometheus.NewRegistry()
+// initializeDaemonMetrics creates non-controller metrics
+func initializeDaemonMetrics() {
+	// CLUSTER METRICS
+	numACLRules = createClusterGauge(numACLRulesName, numACLRulesHelp)
+	numIPSets = createClusterGauge(numIPSetsName, numIPSetsHelp)
+	numIPSetEntries = createClusterGauge(numIPSetEntriesName, numIPSetEntriesHelp)
+	ipsetInventory = createClusterGaugeVec(ipsetInventoryName, ipsetInventoryHelp, ipsetInventoryLabels)
+	ipsetInventoryMap = make(map[string]int)
+
+	// NODE METRICS
+	addACLRuleExecTime = createNodeSummary(addACLRuleExecTimeName, addACLRuleExecTimeHelp)
+	addIPSetExecTime = createNodeSummary(addIPSetExecTimeName, addIPSetExecTimeHelp)
+}
+
+// initializeControllerMetrics creates metrics modified by the controller
+func initializeControllerMetrics() {
+	// CLUSTER METRICS
+	numPolicies = createClusterGauge(numPoliciesName, numPoliciesHelp)
+	// TODO include health metrics: num failures for validating policies & ipsets
+
+	// NODE METRICS
+	addPolicyExecTime = createNodeSummary(addPolicyExecTimeName, addPolicyExecTimeHelp)
+
+	// perf metrics added after v1.4.16
+	// all these metrics have "npm_controller_" prepended to their name
+	controllerPolicyExecTime = createControllerNodeSummaryVec(policyExecTimeName, controllerPolicyExecTimeHelp, controllerExecTimeLabels)
+	controllerPodExecTime = createControllerNodeSummaryVec(podExecTimeName, controllerPodExecTimeHelp, controllerExecTimeLabels)
+	controllerNamespaceExecTime = createControllerNodeSummaryVec(namespaceExecTimeName, controllerNamespaceExecTimeHelp, controllerExecTimeLabels)
+}
+
+func getRegistry(registryType RegistryType) *prometheus.Registry {
+	if registryType == NodeMetrics {
+		return nodeRegistry
 	}
+	return clusterRegistry
 }
 
 func register(collector prometheus.Collector, name string, registryType RegistryType) {
-	registry := registries[registryType]
-	err := registry.Register(collector)
+	err := getRegistry(registryType).Register(collector)
 	if err != nil {
 		log.Errorf("Error creating metric %s", name)
 	}
 }
 
-func createGauge(name, helpMessage string, registryType RegistryType) prometheus.Gauge {
+func createClusterGauge(name, helpMessage string) prometheus.Gauge {
 	gauge := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -214,11 +205,11 @@ func createGauge(name, helpMessage string, registryType RegistryType) prometheus
 			Help:      helpMessage,
 		},
 	)
-	register(gauge, name, registryType)
+	register(gauge, name, ClusterMetrics)
 	return gauge
 }
 
-func createGaugeVec(name, helpMessage string, registryType RegistryType, labels ...string) *prometheus.GaugeVec {
+func createClusterGaugeVec(name, helpMessage string, labels []string) *prometheus.GaugeVec {
 	gaugeVec := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -227,50 +218,36 @@ func createGaugeVec(name, helpMessage string, registryType RegistryType, labels 
 		},
 		labels,
 	)
-	register(gaugeVec, name, registryType)
+	register(gaugeVec, name, ClusterMetrics)
 	return gaugeVec
 }
 
-func createSummary(name, helpMessage string, registryType RegistryType) prometheus.Summary {
+func createNodeSummary(name, helpMessage string) prometheus.Summary {
+	// uses default observation TTL of 10 minutes
 	summary := prometheus.NewSummary(
 		prometheus.SummaryOpts{
 			Namespace:  namespace,
 			Name:       name,
 			Help:       helpMessage,
 			Objectives: execTimeQuantiles,
-			// quantiles e.g. the "0.5 quantile" will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
 		},
 	)
-	register(summary, name, registryType)
+	register(summary, name, NodeMetrics)
 	return summary
 }
 
-func createSummaryVec(name, helpMessage string, registryType RegistryType, labels ...string) *prometheus.SummaryVec {
+func createControllerNodeSummaryVec(name, helpMessage string, labels []string) *prometheus.SummaryVec {
+	// uses default observation TTL of 10 minutes
 	summary := prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace:  namespace,
+			Subsystem:  controllerPrefix,
 			Name:       name,
 			Help:       helpMessage,
 			Objectives: execTimeQuantiles,
-			// quantiles e.g. the "0.5 quantile" will actually be the phi quantile for some phi in [0.5 - 0.05, 0.5 + 0.05]
 		},
 		labels,
 	)
-	register(summary, name, registryType)
+	register(summary, name, NodeMetrics)
 	return summary
-}
-
-func createDataplaneHealthCounterVec(name, helpMessage string) *prometheus.CounterVec {
-	counter := prometheus.NewCounterVec(
-		// fully-qualified name will be namespace_subsystem_name
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: dataplaneHealthSubsystem,
-			Name:      name,
-			Help:      helpMessage,
-		},
-		[]string{errorTypeLabel},
-	)
-	register(counter, name, DataplaneHealthMetrics)
-	return counter
 }

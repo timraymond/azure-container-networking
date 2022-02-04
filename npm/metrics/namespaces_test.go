@@ -2,9 +2,9 @@ package metrics
 
 import "testing"
 
-func TestRecordNamespaceApplyTime(t *testing.T) {
-	testStopAndRecordApplyTime(t, &applyMetric{
-		RecordNamespaceApplyTime,
-		GetNamespaceApplyCount,
+func TestRecordNamespaceExecTime(t *testing.T) {
+	testStopAndRecordCRUDExecTime(t, &crudExecMetric{
+		RecordNamespaceExecTime,
+		GetNamespaceExecCount,
 	})
 }

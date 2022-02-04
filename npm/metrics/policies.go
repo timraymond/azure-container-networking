@@ -17,13 +17,13 @@ func ResetNumPolicies() {
 	numPolicies.Set(0)
 }
 
-// RecordPolicyApplyTime adds an observation of policy apply time for the specified apply mode.
+// RecordPolicyExecTime adds an observation of policy exec time for the specified operation.
 // The execution time is from the timer's start until now.
-func RecordPolicyApplyTime(timer *Timer, mode ApplyMode) {
-	if mode == CreateMode {
+func RecordPolicyExecTime(timer *Timer, op OperationKind) {
+	if op == CreateOp {
 		timer.stopAndRecord(addPolicyExecTime)
 	} else {
-		timer.stopAndRecordApplyTime(policyApplyTime, mode)
+		timer.stopAndRecordCRUDExecTime(controllerPolicyExecTime, op)
 	}
 }
 
@@ -33,12 +33,12 @@ func GetNumPolicies() (int, error) {
 	return getValue(numPolicies)
 }
 
-// GetPolicyApplyCount returns the number of observations for policy apply time for the specified apply mode.
+// GetPolicyExecCount returns the number of observations for policy exec time for the specified operation.
 // This function is slow.
-func GetPolicyApplyCount(mode ApplyMode) (int, error) {
-	if mode == CreateMode {
+func GetPolicyExecCount(op OperationKind) (int, error) {
+	if op == CreateOp {
 		return getCountValue(addPolicyExecTime)
 	}
-	labels := prometheus.Labels{applyModeLabel: string(mode)}
-	return getCountValue(policyApplyTime.With(labels))
+	labels := prometheus.Labels{operationLabel: string(op)}
+	return getCountVecValue(controllerPolicyExecTime, labels)
 }

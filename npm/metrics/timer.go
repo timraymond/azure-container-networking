@@ -23,13 +23,13 @@ func (timer *Timer) stopAndRecord(observer prometheus.Summary) {
 	observer.Observe(timer.timeElapsed())
 }
 
-func (timer *Timer) stopAndRecordApplyTime(observer *prometheus.SummaryVec, mode ApplyMode) {
+func (timer *Timer) stopAndRecordCRUDExecTime(observer *prometheus.SummaryVec, op OperationKind) {
 	timer.stop()
-	if _, ok := knownApplyModes[mode]; !ok {
-		klog.Errorf("Unknown apply mode [%v] when recording apply time", mode)
+	if !op.isValid() {
+		klog.Errorf("Unknown operation [%v] when recording exec time", op)
 		return
 	}
-	labels := prometheus.Labels{applyModeLabel: string(mode)}
+	labels := prometheus.Labels{operationLabel: string(op)}
 	observer.With(labels).Observe(timer.timeElapsed())
 }
 

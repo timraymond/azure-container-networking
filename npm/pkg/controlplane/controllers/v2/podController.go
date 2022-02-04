@@ -331,7 +331,7 @@ func (c *PodController) syncPod(key string) error {
 			if _, ok := c.podMap[key]; ok {
 				// record time to delete pod if it exists (can't call within cleanUpDeletedPod because this can be called by a pod update)
 				timer := metrics.StartNewTimer()
-				defer metrics.RecordPodApplyTime(timer, metrics.DeleteMode)
+				defer metrics.RecordPodExecTime(timer, metrics.DeleteOp)
 			}
 
 			// cleanUpDeletedPod will check if the pod exists in cache, if it does then proceeds with deletion
@@ -354,7 +354,7 @@ func (c *PodController) syncPod(key string) error {
 		if _, ok := c.podMap[key]; ok {
 			// record time to delete pod if it exists (can't call within cleanUpDeletedPod because this can be called by a pod update)
 			timer := metrics.StartNewTimer()
-			defer metrics.RecordPodApplyTime(timer, metrics.DeleteMode)
+			defer metrics.RecordPodExecTime(timer, metrics.DeleteOp)
 		}
 		if err = c.cleanUpDeletedPod(key); err != nil {
 			return fmt.Errorf("Error: %w when when pod is in completed state", err)
@@ -456,10 +456,10 @@ func (c *PodController) syncAddAndUpdatePod(newPodObj *corev1.Pod) error {
 	klog.Infof("[syncAddAndUpdatePod] updating Pod with key %s", podKey)
 	// No cached npmPod exists. start adding the pod in a cache
 	if !exists {
-		defer metrics.RecordPodApplyTime(timer, metrics.CreateMode)
+		defer metrics.RecordPodExecTime(timer, metrics.CreateOp)
 		return c.syncAddedPod(newPodObj)
 	}
-	defer metrics.RecordPodApplyTime(timer, metrics.UpdateMode)
+	defer metrics.RecordPodExecTime(timer, metrics.UpdateOp)
 
 	// Dealing with "updatePod" event - Compare last applied states against current Pod states
 	// There are two possibilities for npmPodObj and newPodObj

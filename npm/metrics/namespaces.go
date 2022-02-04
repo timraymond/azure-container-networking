@@ -1,16 +1,18 @@
 package metrics
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/prometheus/client_golang/prometheus"
+)
 
-// RecordNamespaceApplyTime adds an observation of namespace apply time for the specified apply mode.
+// RecordNamespaceExecTime adds an observation of namespace exec time for the specified operation.
 // The execution time is from the timer's start until now.
-func RecordNamespaceApplyTime(timer *Timer, mode ApplyMode) {
-	timer.stopAndRecordApplyTime(namespaceApplyTime, mode)
+func RecordNamespaceExecTime(timer *Timer, op OperationKind) {
+	timer.stopAndRecordCRUDExecTime(controllerNamespaceExecTime, op)
 }
 
-// GetPodApplyCount returns the number of observations for namespace apply time for the specified apply mode.
+// GetNamespaceExecCount returns the number of observations for namespace exec time for the specified operation.
 // This function is slow.
-func GetNamespaceApplyCount(mode ApplyMode) (int, error) {
-	labels := prometheus.Labels{applyModeLabel: string(mode)}
-	return getCountValue(namespaceApplyTime.With(labels))
+func GetNamespaceExecCount(op OperationKind) (int, error) {
+	labels := prometheus.Labels{operationLabel: string(op)}
+	return getCountVecValue(controllerNamespaceExecTime, labels)
 }
