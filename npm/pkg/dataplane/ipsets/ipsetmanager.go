@@ -50,12 +50,14 @@ func NewIPSetManager(iMgrCfg *IPSetManagerCfg, ioShim *common.IOShim) *IPSetMana
 func (iMgr *IPSetManager) ResetIPSets() error {
 	iMgr.Lock()
 	defer iMgr.Unlock()
+	metrics.ResetNumIPSets()
+	metrics.ResetIPSetEntries()
 	err := iMgr.resetIPSets()
+	iMgr.setMap = make(map[string]*IPSet)
+	iMgr.clearDirtyCache()
 	if err != nil {
 		return fmt.Errorf("error while resetting ipsetmanager: %w", err)
 	}
-	// TODO update prometheus metrics here instead of in OS-specific functions (done in Linux right now)
-	// metrics.ResetNumIPSets() and metrics.ResetIPSetEntries()
 	return nil
 }
 
@@ -364,8 +366,6 @@ func (iMgr *IPSetManager) RemoveFromList(listMetadata *IPSetMetadata, setMetadat
 }
 
 func (iMgr *IPSetManager) ApplyIPSets() error {
-	prometheusTimer := metrics.StartNewTimer()
-
 	iMgr.Lock()
 	defer iMgr.Unlock()
 
@@ -373,13 +373,14 @@ func (iMgr *IPSetManager) ApplyIPSets() error {
 		klog.Info("[IPSetManager] No IPSets to apply")
 		return nil
 	}
-	defer metrics.RecordIPSetExecTime(prometheusTimer) // record execution time regardless of failure
 
 	klog.Infof("[IPSetManager] toAddUpdateCache %+v \n ", iMgr.toAddOrUpdateCache)
 	klog.Infof("[IPSetManager] toDeleteCache %+v \n ", iMgr.toDeleteCache)
 	iMgr.sanitizeDirtyCache()
 
 	// Call the appropriate apply ipsets
+	prometheusTimer := metrics.StartNewTimer()
+	defer metrics.RecordIPSetExecTime(prometheusTimer) // record execution time regardless of failure
 	err := iMgr.applyIPSets()
 	if err != nil {
 		return err
