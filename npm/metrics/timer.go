@@ -36,6 +36,12 @@ func (timer *Timer) stopAndRecordCRUDExecTime(observer *prometheus.SummaryVec, o
 	}
 }
 
+func (timer *Timer) stopAndRecordExecTimeWithError(observer *prometheus.SummaryVec, hadError bool) {
+	timer.stop()
+	labels := getErrorLabels(hadError)
+	observer.With(labels).Observe(timer.timeElapsed())
+}
+
 func (timer *Timer) stop() {
 	timer.after = time.Now().UnixNano()
 }

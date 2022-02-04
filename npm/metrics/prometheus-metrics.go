@@ -77,7 +77,6 @@ var (
 	execTimeQuantiles = map[float64]float64{quantileMedian: deltaMedian, quantile90th: delta90th, quantil99th: delta99th}
 
 	numPolicies          prometheus.Gauge
-	addPolicyExecTime    prometheus.Summary
 	numACLRules          prometheus.Gauge
 	addACLRuleExecTime   prometheus.Summary
 	numIPSets            prometheus.Gauge
@@ -86,7 +85,11 @@ var (
 	ipsetInventory       *prometheus.GaugeVec
 	ipsetInventoryLabels = []string{setNameLabel, setHashLabel}
 
-	// perf metrics added after v1.4.16
+	// controller perf metrics
+	// used to be a regular Summary in v1.4.16 and below
+	addPolicyExecTime       *prometheus.SummaryVec
+	addPolicyExecTimeLabels = []string{hadErrorLabel}
+	// metrics added after v1.4.16
 	controllerPolicyExecTime    *prometheus.SummaryVec
 	controllerPodExecTime       *prometheus.SummaryVec
 	controllerNamespaceExecTime *prometheus.SummaryVec
@@ -177,13 +180,13 @@ func initializeControllerMetrics() {
 	// TODO include health metrics: num failures for validating policies & ipsets
 
 	// NODE METRICS
-	addPolicyExecTime = createNodeSummary(addPolicyExecTimeName, addPolicyExecTimeHelp)
+	addPolicyExecTime = createNodeSummaryVec(addPolicyExecTimeName, "", addPolicyExecTimeHelp, addPolicyExecTimeLabels)
 
 	// perf metrics added after v1.4.16
 	// all these metrics have "npm_controller_" prepended to their name
-	controllerPolicyExecTime = createControllerNodeSummaryVec(policyExecTimeName, controllerPolicyExecTimeHelp, controllerExecTimeLabels)
-	controllerPodExecTime = createControllerNodeSummaryVec(podExecTimeName, controllerPodExecTimeHelp, controllerExecTimeLabels)
-	controllerNamespaceExecTime = createControllerNodeSummaryVec(namespaceExecTimeName, controllerNamespaceExecTimeHelp, controllerExecTimeLabels)
+	controllerPolicyExecTime = createControllerExecTimeSummaryVec(policyExecTimeName, controllerPolicyExecTimeHelp)
+	controllerPodExecTime = createControllerExecTimeSummaryVec(podExecTimeName, controllerPodExecTimeHelp)
+	controllerNamespaceExecTime = createControllerExecTimeSummaryVec(namespaceExecTimeName, controllerNamespaceExecTimeHelp)
 }
 
 func register(collector prometheus.Collector, name string, registryType RegistryType) {
@@ -239,12 +242,12 @@ func createNodeSummary(name, helpMessage string) prometheus.Summary {
 	return summary
 }
 
-func createControllerNodeSummaryVec(name, helpMessage string, labels []string) *prometheus.SummaryVec {
+func createNodeSummaryVec(name, subsystem, helpMessage string, labels []string) *prometheus.SummaryVec {
 	// uses default observation TTL of 10 minutes
 	summary := prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
 			Namespace:  namespace,
-			Subsystem:  controllerPrefix,
+			Subsystem:  subsystem,
 			Name:       name,
 			Help:       helpMessage,
 			Objectives: execTimeQuantiles,
@@ -253,4 +256,8 @@ func createControllerNodeSummaryVec(name, helpMessage string, labels []string) *
 	)
 	register(summary, name, NodeMetrics)
 	return summary
+}
+
+func createControllerExecTimeSummaryVec(name, helpMessage string) *prometheus.SummaryVec {
+	return createNodeSummaryVec(name, controllerPrefix, helpMessage, controllerExecTimeLabels)
 }

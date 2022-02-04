@@ -19,7 +19,7 @@ func ResetNumPolicies() {
 // The execution time is from the timer's start until now.
 func RecordControllerPolicyExecTime(timer *Timer, op OperationKind, hadError bool) {
 	if op == CreateOp {
-		timer.stopAndRecord(addPolicyExecTime)
+		timer.stopAndRecordExecTimeWithError(addPolicyExecTime, hadError)
 	} else {
 		timer.stopAndRecordCRUDExecTime(controllerPolicyExecTime, op, hadError)
 	}
@@ -35,7 +35,7 @@ func GetNumPolicies() (int, error) {
 // This function is slow.
 func GetControllerPolicyExecCount(op OperationKind, hadError bool) (int, error) {
 	if op == CreateOp {
-		return getCountValue(addPolicyExecTime)
+		return getCountVecValue(addPolicyExecTime, getErrorLabels(hadError))
 	}
 	return getCountVecValue(controllerPolicyExecTime, getCRUDExecTimeLabels(op, hadError))
 }

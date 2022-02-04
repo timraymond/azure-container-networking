@@ -54,6 +54,14 @@ func getCRUDExecTimeLabels(op OperationKind, hadError bool) prometheus.Labels {
 	}
 }
 
+func getErrorLabels(hadError bool) prometheus.Labels {
+	hadErrorVal := "false"
+	if hadError {
+		hadErrorVal = "true"
+	}
+	return prometheus.Labels{hadErrorLabel: hadErrorVal}
+}
+
 // This function is slow.
 func getQuantiles(summaryMetric prometheus.Summary) ([]*dto.Quantile, error) {
 	dtoMetric, err := getDTOMetric(summaryMetric)
