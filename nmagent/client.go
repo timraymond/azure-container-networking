@@ -2,6 +2,7 @@ package nmagent
 
 import (
 	"context"
+	"dnc/nmagent/internal"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -25,6 +26,12 @@ type Error struct {
 
 func (e Error) Error() string {
 	return fmt.Sprintf("nmagent: http status %d", e.Code)
+}
+
+// Temporary reports whether the error encountered from NMAgent should be
+// considered temporary, and thus retriable
+func (e Error) Temporary() bool {
+	return e.Code == http.StatusProcessing
 }
 
 type VirtualNetwork struct {
@@ -75,35 +82,20 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	// TODO(timraymond): exponential backoff needed
-	for {
-		// check to see if the context is still alive
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-
+	err = internal.BackoffRetry(ctx, func() error {
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing request: %w", err)
 		}
 		defer resp.Body.Close()
 
-		// the response from NMAgent only contains the HTTP status code, so there is
-		// no need to parse it
-
-		switch resp.StatusCode {
-		case http.StatusOK:
-			return nil
-		case http.StatusInternalServerError:
-			return Error{
-				Code: http.StatusInternalServerError,
-			}
-		case http.StatusProcessing:
-			continue
-		default:
-			return nil
+		if resp.StatusCode != http.StatusOK {
+			return Error{resp.StatusCode}
 		}
-	}
+		return nil
+	})
+
+	return err
 }
 
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
@@ -115,37 +107,37 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 		Path:   fmt.Sprintf(GetNetworkConfigPath, vnetID),
 	}
 
+	var out VirtualNetwork
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), strings.NewReader(""))
 	if err != nil {
-		return VirtualNetwork{}, fmt.Errorf("creating http request to %q: %w", path.String(), err)
+		return out, fmt.Errorf("creating http request to %q: %w", path.String(), err)
 	}
 
-	for {
-		// check to see if the context is dead
-		if err := ctx.Err(); err != nil {
-			return VirtualNetwork{}, err
-		}
-
+	err = internal.BackoffRetry(ctx, func() error {
 		resp, err := c.HTTPClient.Do(req)
 		if err != nil {
-			return VirtualNetwork{}, fmt.Errorf("executing http request to %q: %w", path.String(), err)
+			return fmt.Errorf("executing http request to %q: %w", path.String(), err)
 		}
 		defer resp.Body.Close()
 
-		switch resp.StatusCode {
-		case http.StatusOK:
-			var out VirtualNetwork
-			err = json.NewDecoder(resp.Body).Decode(&out)
-			if err != nil {
-				return VirtualNetwork{}, fmt.Errorf("decoding json response for %q: %w", path.String(), err)
-			}
-			return out, nil
-		case http.StatusProcessing:
-			continue
-		default:
-			return VirtualNetwork{}, fmt.Errorf("unexpected HTTP status from NMAgent (%d): %s", resp.StatusCode, http.StatusText(resp.StatusCode))
+		if resp.StatusCode != http.StatusOK {
+			return Error{resp.StatusCode}
 		}
+
+		err = json.NewDecoder(resp.Body).Decode(&out)
+		if err != nil {
+			return fmt.Errorf("decoding json response for %q: %w", path.String(), err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		// no need to wrap, as the retry wrapper is intended to be transparent
+		return out, err
 	}
+	return out, nil
 }
 
 /*
