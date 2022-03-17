@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -154,6 +155,54 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 	}
 }
 
+// TODO(timraymond): this is super repetitive (see the retry test)
+func TestNMAgentClientJoinNetworkUnauthorized(t *testing.T) {
+	t.Parallel()
+
+	// we want to ensure that the client will automatically follow up with
+	// NMAgent, so we want to track the number of requests that it makes
+	invocations := 0
+	exp := 10
+
+	client := nmagent.Client{
+		UnauthorizedGracePeriod: 1 * time.Minute,
+		HTTPClient: &http.Client{
+			Transport: &TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					rr := httptest.NewRecorder()
+					if invocations < exp {
+						rr.WriteHeader(http.StatusUnauthorized)
+						invocations++
+					} else {
+						rr.WriteHeader(http.StatusOK)
+					}
+					return rr.Result(), nil
+				},
+			},
+		},
+	}
+
+	// if the test provides a timeout, use it in the context
+	var ctx context.Context
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(context.Background(), deadline)
+		defer cancel()
+	} else {
+		ctx = context.Background()
+	}
+
+	// attempt to join network
+	err := client.JoinNetwork(ctx, "00000000-0000-0000-0000-000000000000")
+	if err != nil {
+		t.Fatal("unexpected error: err:", err)
+	}
+
+	if invocations != exp {
+		t.Error("client did not make the expected number of API calls: got:", invocations, "exp:", exp)
+	}
+}
+
 func TestNMAgentGetNetworkConfig(t *testing.T) {
 	getTests := []struct {
 		name       string
@@ -249,6 +298,57 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 					rr := httptest.NewRecorder()
 					if count < exp {
 						rr.WriteHeader(http.StatusProcessing)
+						count++
+					} else {
+						rr.WriteHeader(http.StatusOK)
+					}
+
+					// we still need a fake response
+					var out nmagent.VirtualNetwork
+					err := json.NewEncoder(rr).Encode(&out)
+					if err != nil {
+						return nil, err
+					}
+
+					return rr.Result(), nil
+				},
+			},
+		},
+	}
+
+	// if the test provides a timeout, use it in the context
+	var ctx context.Context
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(context.Background(), deadline)
+		defer cancel()
+	} else {
+		ctx = context.Background()
+	}
+
+	_, err := client.GetNetworkConfiguration(ctx, "00000000-0000-0000-0000-000000000000")
+	if err != nil {
+		t.Fatal("unexpected error: err:", err)
+	}
+
+	if count != exp {
+		t.Error("unexpected number of API calls: exp:", exp, "got:", count)
+	}
+}
+
+func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
+	t.Parallel()
+
+	count := 0
+	exp := 10
+	client := &nmagent.Client{
+		UnauthorizedGracePeriod: 1 * time.Minute,
+		HTTPClient: &http.Client{
+			Transport: &TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					rr := httptest.NewRecorder()
+					if count < exp {
+						rr.WriteHeader(http.StatusUnauthorized)
 						count++
 					} else {
 						rr.WriteHeader(http.StatusOK)

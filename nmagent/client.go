@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,10 +26,16 @@ type Client struct {
 	// config
 	Host string
 	Port string
+
+	// UnauthorizedGracePeriod is the amount of time Unauthorized responses from
+	// NMAgent will be tolerated and retried
+	UnauthorizedGracePeriod time.Duration
 }
 
 // JoinNetwork joins a node to a customer's virtual network
 func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
+	requestStart := time.Now()
+
 	// we need to be a little defensive, because there is no bad request response
 	// from NMAgent
 	if _, err := uuid.Parse(networkID); err != nil {
@@ -54,7 +61,7 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return Error{resp.StatusCode}
+			return c.error(time.Since(requestStart), resp.StatusCode)
 		}
 		return nil
 	})
@@ -65,6 +72,8 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
 // network. Only subnets which have been delegated will be returned
 func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (VirtualNetwork, error) {
+	requestStart := time.Now()
+
 	path := &url.URL{
 		Scheme: "https",
 		Host:   net.JoinHostPort(c.Host, c.Port),
@@ -86,7 +95,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return Error{resp.StatusCode}
+			return c.error(time.Since(requestStart), resp.StatusCode)
 		}
 
 		err = json.NewDecoder(resp.Body).Decode(&out)
@@ -117,3 +126,13 @@ func (c *Client) GetNmAgentSupportedApiURLFmt(ctx context.Context) error {
 	return nil
 }
 */
+
+// error constructs a NMAgent error while providing some information configured
+// at instantiation
+func (c *Client) error(runtime time.Duration, code int) error {
+	return Error{
+		Runtime: runtime,
+		Limit:   c.UnauthorizedGracePeriod,
+		Code:    code,
+	}
+}
