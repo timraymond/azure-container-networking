@@ -70,18 +70,15 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 
 			// create a client
 			var got string
-			client := nmagent.Client{
-				HTTPClient: &http.Client{
-					Transport: &TestTripper{
-						RoundTripF: func(req *http.Request) (*http.Response, error) {
-							got = req.URL.Path
-							rr := httptest.NewRecorder()
-							rr.WriteHeader(test.respStatus)
-							return rr.Result(), nil
-						},
-					},
+			client := nmagent.NewTestClient(&TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					got = req.URL.Path
+					rr := httptest.NewRecorder()
+					rr.Write([]byte(fmt.Sprintf(`{"httpStatusCode":"%d"}`, test.respStatus)))
+					rr.WriteHeader(http.StatusOK)
+					return rr.Result(), nil
 				},
-			}
+			})
 
 			// if the test provides a timeout, use it in the context
 			var ctx context.Context
@@ -117,22 +114,19 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 	invocations := 0
 	exp := 10
 
-	client := nmagent.Client{
-		HTTPClient: &http.Client{
-			Transport: &TestTripper{
-				RoundTripF: func(req *http.Request) (*http.Response, error) {
-					rr := httptest.NewRecorder()
-					if invocations < exp {
-						rr.WriteHeader(http.StatusProcessing)
-						invocations++
-					} else {
-						rr.WriteHeader(http.StatusOK)
-					}
-					return rr.Result(), nil
-				},
-			},
+	client := nmagent.NewTestClient(&TestTripper{
+		RoundTripF: func(req *http.Request) (*http.Response, error) {
+			rr := httptest.NewRecorder()
+			if invocations < exp {
+				rr.WriteHeader(http.StatusProcessing)
+				invocations++
+			} else {
+				rr.WriteHeader(http.StatusOK)
+			}
+			rr.Write([]byte(`{"httpStatusCode": "200"}`))
+			return rr.Result(), nil
 		},
-	}
+	})
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -164,23 +158,21 @@ func TestNMAgentClientJoinNetworkUnauthorized(t *testing.T) {
 	invocations := 0
 	exp := 10
 
-	client := nmagent.Client{
-		UnauthorizedGracePeriod: 1 * time.Minute,
-		HTTPClient: &http.Client{
-			Transport: &TestTripper{
-				RoundTripF: func(req *http.Request) (*http.Response, error) {
-					rr := httptest.NewRecorder()
-					if invocations < exp {
-						rr.WriteHeader(http.StatusUnauthorized)
-						invocations++
-					} else {
-						rr.WriteHeader(http.StatusOK)
-					}
-					return rr.Result(), nil
-				},
-			},
+	client := nmagent.NewTestClient(&TestTripper{
+		RoundTripF: func(req *http.Request) (*http.Response, error) {
+			rr := httptest.NewRecorder()
+			if invocations < exp {
+				rr.WriteHeader(http.StatusUnauthorized)
+				invocations++
+			} else {
+				rr.WriteHeader(http.StatusOK)
+			}
+			rr.Write([]byte(`{"httpStatusCode": "200"}`))
+			return rr.Result(), nil
 		},
-	}
+	})
+
+	client.UnauthorizedGracePeriod = 1 * time.Minute
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -208,7 +200,7 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 		name       string
 		vnetID     string
 		expURL     string
-		expVNet    nmagent.VirtualNetwork
+		expVNet    map[string]interface{}
 		shouldCall bool
 		shouldErr  bool
 	}{
@@ -216,16 +208,17 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 			"happy path",
 			"00000000-0000-0000-0000-000000000000",
 			"/machine/plugins/?comp=nmagent&type=NetworkManagement/joinedVirtualNetworks/00000000-0000-0000-0000-000000000000/api-version/1",
-			nmagent.VirtualNetwork{
-				CNetSpace:      "10.10.1.0/24",
-				DefaultGateway: "10.10.0.1",
-				DNSServers: []string{
+			map[string]interface{}{
+				"httpStatusCode": "200",
+				"cnetSpace":      "10.10.1.0/24",
+				"defaultGateway": "10.10.0.1",
+				"dnsServers": []string{
 					"1.1.1.1",
 					"1.0.0.1",
 				},
-				Subnets:     []nmagent.Subnet{},
-				VNetSpace:   "10.0.0.0/8",
-				VNetVersion: "2018", // TODO(timraymond): what's a real version look like?
+				"subnets":     []map[string]interface{}{},
+				"vnetSpace":   "10.0.0.0/8",
+				"vnetVersion": "12345",
 			},
 			true,
 			false,
@@ -238,23 +231,19 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 			t.Parallel()
 
 			var got string
-			client := &nmagent.Client{
-				HTTPClient: &http.Client{
-					Transport: &TestTripper{
-						RoundTripF: func(req *http.Request) (*http.Response, error) {
-							rr := httptest.NewRecorder()
-							got = req.URL.Path
-							rr.WriteHeader(http.StatusOK)
-							err := json.NewEncoder(rr).Encode(&test.expVNet)
-							if err != nil {
-								return nil, fmt.Errorf("encoding response: %w", err)
-							}
+			client := nmagent.NewTestClient(&TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					rr := httptest.NewRecorder()
+					got = req.URL.Path
+					rr.WriteHeader(http.StatusOK)
+					err := json.NewEncoder(rr).Encode(&test.expVNet)
+					if err != nil {
+						return nil, fmt.Errorf("encoding response: %w", err)
+					}
 
-							return rr.Result(), nil
-						},
-					},
+					return rr.Result(), nil
 				},
-			}
+			})
 
 			// if the test provides a timeout, use it in the context
 			var ctx context.Context
@@ -279,8 +268,17 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 				t.Error("unexpected URL: got:", got, "exp:", test.expURL)
 			}
 
-			if !cmp.Equal(gotVNet, test.expVNet) {
-				t.Error("received vnet differs from expected: diff:", cmp.Diff(gotVNet, test.expVNet))
+			// TODO(timraymond): this is ugly
+			expVnet := nmagent.VirtualNetwork{
+				CNetSpace:      test.expVNet["cnetSpace"].(string),
+				DefaultGateway: test.expVNet["defaultGateway"].(string),
+				DNSServers:     test.expVNet["dnsServers"].([]string),
+				Subnets:        []nmagent.Subnet{},
+				VNetSpace:      test.expVNet["vnetSpace"].(string),
+				VNetVersion:    test.expVNet["vnetVersion"].(string),
+			}
+			if !cmp.Equal(gotVNet, expVnet) {
+				t.Error("received vnet differs from expected: diff:", cmp.Diff(gotVNet, expVnet))
 			}
 		})
 	}
@@ -291,30 +289,21 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 
 	count := 0
 	exp := 10
-	client := &nmagent.Client{
-		HTTPClient: &http.Client{
-			Transport: &TestTripper{
-				RoundTripF: func(req *http.Request) (*http.Response, error) {
-					rr := httptest.NewRecorder()
-					if count < exp {
-						rr.WriteHeader(http.StatusProcessing)
-						count++
-					} else {
-						rr.WriteHeader(http.StatusOK)
-					}
+	client := nmagent.NewTestClient(&TestTripper{
+		RoundTripF: func(req *http.Request) (*http.Response, error) {
+			rr := httptest.NewRecorder()
+			if count < exp {
+				rr.WriteHeader(http.StatusProcessing)
+				count++
+			} else {
+				rr.WriteHeader(http.StatusOK)
+			}
 
-					// we still need a fake response
-					var out nmagent.VirtualNetwork
-					err := json.NewEncoder(rr).Encode(&out)
-					if err != nil {
-						return nil, err
-					}
-
-					return rr.Result(), nil
-				},
-			},
+			// we still need a fake response
+			rr.Write([]byte(`{"httpStatusCode": "200"}`))
+			return rr.Result(), nil
 		},
-	}
+	})
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -341,31 +330,24 @@ func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
 
 	count := 0
 	exp := 10
-	client := &nmagent.Client{
-		UnauthorizedGracePeriod: 1 * time.Minute,
-		HTTPClient: &http.Client{
-			Transport: &TestTripper{
-				RoundTripF: func(req *http.Request) (*http.Response, error) {
-					rr := httptest.NewRecorder()
-					if count < exp {
-						rr.WriteHeader(http.StatusUnauthorized)
-						count++
-					} else {
-						rr.WriteHeader(http.StatusOK)
-					}
+	client := nmagent.NewTestClient(&TestTripper{
+		RoundTripF: func(req *http.Request) (*http.Response, error) {
+			rr := httptest.NewRecorder()
+			if count < exp {
+				rr.WriteHeader(http.StatusUnauthorized)
+				count++
+			} else {
+				rr.WriteHeader(http.StatusOK)
+			}
 
-					// we still need a fake response
-					var out nmagent.VirtualNetwork
-					err := json.NewEncoder(rr).Encode(&out)
-					if err != nil {
-						return nil, err
-					}
+			// we still need a fake response
+			rr.Write([]byte(`{"httpStatusCode": "200"}`))
 
-					return rr.Result(), nil
-				},
-			},
+			return rr.Result(), nil
 		},
-	}
+	})
+
+	client.UnauthorizedGracePeriod = 1 * time.Minute
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context

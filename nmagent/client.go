@@ -8,20 +8,33 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 const (
-	JoinNetworkPath      string = "/machine/plugins/?comp=nmagent&type=NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
-	GetNetworkConfigPath string = "/machine/plugins/?comp=nmagent&type=NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
+	JoinNetworkPath      string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
+	GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 )
+
+// NewClient returns an initialized Client using the provided configuration
+func NewClient(host, port string, grace time.Duration) *Client {
+	return &Client{
+		httpClient: &http.Client{
+			Transport: &internal.WireserverTransport{
+				Transport: http.DefaultTransport,
+			},
+		},
+		Host:                    host,
+		Port:                    port,
+		UnauthorizedGracePeriod: grace,
+	}
+}
 
 // Client is an agent for exchanging information with NMAgent
 type Client struct {
-	HTTPClient *http.Client
+	httpClient *http.Client
 
 	// config
 	Host string
@@ -48,13 +61,13 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 		Path:   fmt.Sprintf(JoinNetworkPath, networkID),
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL.String(), strings.NewReader(""))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
 	err = internal.BackoffRetry(ctx, func() error {
-		resp, err := c.HTTPClient.Do(req)
+		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing request: %w", err)
 		}
@@ -82,13 +95,13 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 
 	var out VirtualNetwork
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), strings.NewReader(""))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
 	if err != nil {
 		return out, fmt.Errorf("creating http request to %q: %w", path.String(), err)
 	}
 
 	err = internal.BackoffRetry(ctx, func() error {
-		resp, err := c.HTTPClient.Do(req)
+		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing http request to %q: %w", path.String(), err)
 		}
