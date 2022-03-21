@@ -368,3 +368,73 @@ func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
 		t.Error("unexpected number of API calls: exp:", exp, "got:", count)
 	}
 }
+
+func TestNMAgentPutNetworkContainer(t *testing.T) {
+	putNCTests := []struct {
+		name       string
+		req        nmagent.NetworkContainerRequest
+		shouldCall bool
+		shouldErr  bool
+	}{
+		{
+			"happy path",
+			nmagent.NetworkContainerRequest{
+				ID:         "350f1e3c-4283-4f51-83a1-c44253962ef1",
+				Version:    uint64(12345),
+				VNetID:     "be3a33e-61e3-42c7-bd23-6b949f57bd36",
+				SubnetName: "TestSubnet",
+				IPv4Addrs:  []string{"10.0.0.43"},
+				Policies: []nmagent.Policy{
+					{
+						ID:   "policyID1",
+						Type: "type1",
+					},
+					{
+						ID:   "policyID2",
+						Type: "type2",
+					},
+				},
+				VlanID:              1234,
+				AuthenticationToken: "swordfish",
+				PrimaryAddress:      "10.0.0.1",
+			},
+			true,
+			false,
+		},
+	}
+
+	for _, test := range putNCTests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			didCall := false
+			client := nmagent.NewTestClient(&TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					rr := httptest.NewRecorder()
+					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					rr.WriteHeader(http.StatusOK)
+					didCall = true
+					return rr.Result(), nil
+				},
+			})
+
+			err := client.PutNetworkContainer(context.TODO(), test.req)
+			if err != nil && !test.shouldErr {
+				t.Fatal("unexpected error: err", err)
+			}
+
+			if err == nil && test.shouldErr {
+				t.Fatal("expected error but received none")
+			}
+
+			if test.shouldCall && !didCall {
+				t.Fatal("expected call but received none")
+			}
+
+			if !test.shouldCall && didCall {
+				t.Fatal("unexpected call. expected no call ")
+			}
+		})
+	}
+}

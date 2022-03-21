@@ -1,6 +1,7 @@
 package nmagent
 
 import (
+	"bytes"
 	"context"
 	"dnc/nmagent/internal"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 const (
 	JoinNetworkPath      string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 	GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
+	PutNCRequestPath     string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
 )
 
 // NewClient returns an initialized Client using the provided configuration
@@ -126,8 +128,35 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 	return out, nil
 }
 
-/*
-func (c *Client) PutNetworkContainer(ctx context.Context) error {
+// PutNetworkContainer applies a Network Container goal state and publishes it
+// to PubSub
+func (c *Client) PutNetworkContainer(ctx context.Context, nc NetworkContainerRequest) error {
+	requestStart := time.Now()
+
+	path := &url.URL{
+		Scheme: "https",
+		Host:   c.hostPort(),
+		Path:   fmt.Sprintf(PutNCRequestPath, nc.PrimaryAddress, nc.ID, nc.AuthenticationToken),
+	}
+
+	body, err := json.Marshal(nc)
+	if err != nil {
+		return fmt.Errorf("encoding request as JSON: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, path.String(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("submitting request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return c.error(time.Since(requestStart), resp.StatusCode)
+	}
 	return nil
 }
 
@@ -138,7 +167,10 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context) error {
 func (c *Client) GetNmAgentSupportedApiURLFmt(ctx context.Context) error {
 	return nil
 }
-*/
+
+func (c *Client) hostPort() string {
+	return net.JoinHostPort(c.Host, c.Port)
+}
 
 // error constructs a NMAgent error while providing some information configured
 // at instantiation
