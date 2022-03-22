@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,7 +22,7 @@ const (
 )
 
 // NewClient returns an initialized Client using the provided configuration
-func NewClient(host, port string, grace time.Duration) *Client {
+func NewClient(host string, port uint16, grace time.Duration) *Client {
 	return &Client{
 		httpClient: &http.Client{
 			Transport: &internal.WireserverTransport{
@@ -40,7 +41,7 @@ type Client struct {
 
 	// config
 	Host string
-	Port string
+	Port uint16
 
 	// UnauthorizedGracePeriod is the amount of time Unauthorized responses from
 	// NMAgent will be tolerated and retried
@@ -59,7 +60,7 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 
 	joinURL := &url.URL{
 		Scheme: "https",
-		Host:   net.JoinHostPort(c.Host, c.Port),
+		Host:   c.hostPort(),
 		Path:   fmt.Sprintf(JoinNetworkPath, networkID),
 	}
 
@@ -91,7 +92,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 
 	path := &url.URL{
 		Scheme: "https",
-		Host:   net.JoinHostPort(c.Host, c.Port),
+		Host:   c.hostPort(),
 		Path:   fmt.Sprintf(GetNetworkConfigPath, vnetID),
 	}
 
@@ -169,7 +170,8 @@ func (c *Client) GetNmAgentSupportedApiURLFmt(ctx context.Context) error {
 }
 
 func (c *Client) hostPort() string {
-	return net.JoinHostPort(c.Host, c.Port)
+	port := strconv.Itoa(int(c.Port))
+	return net.JoinHostPort(c.Host, port)
 }
 
 // error constructs a NMAgent error while providing some information configured
