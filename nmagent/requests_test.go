@@ -104,3 +104,53 @@ func TestDeleteContainerRequestValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinNetworkRequestPath(t *testing.T) {
+	jnr := nmagent.JoinNetworkRequest{
+		NetworkID: "00000000-0000-0000-0000-000000000000",
+	}
+
+	exp := "/NetworkManagement/joinedVirtualNetworks/00000000-0000-0000-0000-000000000000/api-version/1"
+	if jnr.Path() != exp {
+		t.Error("unexpected path: exp:", exp, "got:", jnr.Path())
+	}
+}
+
+func TestJoinNetworkRequestValidate(t *testing.T) {
+	validateRequest := []struct {
+		name          string
+		req           nmagent.JoinNetworkRequest
+		shouldBeValid bool
+	}{
+		{
+			"invalid",
+			nmagent.JoinNetworkRequest{
+				NetworkID: "4815162342",
+			},
+			false,
+		},
+		{
+			"valid",
+			nmagent.JoinNetworkRequest{
+				NetworkID: "00000000-0000-0000-0000-000000000000",
+			},
+			true,
+		},
+	}
+
+	for _, test := range validateRequest {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := test.req.Validate()
+			if err != nil && test.shouldBeValid {
+				t.Fatal("unexpected error validating: err:", err)
+			}
+
+			if err == nil && !test.shouldBeValid {
+				t.Fatal("expected request to be invalid but wasn't")
+			}
+		})
+	}
+}

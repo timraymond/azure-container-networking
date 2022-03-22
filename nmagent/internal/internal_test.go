@@ -22,7 +22,11 @@ func TestBackoffRetry(t *testing.T) {
 
 	ctx := context.Background()
 
-	err := BackoffRetry(ctx, func() error {
+	rt := Retrier{
+		Cooldown: AsFastAsPossible,
+	}
+
+	err := rt.Do(ctx, func() error {
 		if got < exp {
 			got++
 			return TestError{}
@@ -47,7 +51,11 @@ func TestBackoffRetryWithCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := BackoffRetry(ctx, func() error {
+	rt := Retrier{
+		Cooldown: AsFastAsPossible,
+	}
+
+	err := rt.Do(ctx, func() error {
 		got++
 		if got >= exp {
 			cancel()
@@ -69,7 +77,11 @@ func TestBackoffRetryWithCancel(t *testing.T) {
 }
 
 func TestBackoffRetryUnretriableError(t *testing.T) {
-	err := BackoffRetry(context.Background(), func() error {
+	rt := Retrier{
+		Cooldown: AsFastAsPossible,
+	}
+
+	err := rt.Do(context.Background(), func() error {
 		return errors.New("boom")
 	})
 

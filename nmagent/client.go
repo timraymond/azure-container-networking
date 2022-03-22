@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	JoinNetworkPath      string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 	GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 	PutNCRequestPath     string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
 )
@@ -31,6 +30,9 @@ func NewClient(host string, port uint16, grace time.Duration) *Client {
 		Host:                    host,
 		Port:                    port,
 		UnauthorizedGracePeriod: grace,
+		Retrier: internal.Retrier{
+			Cooldown: internal.Exponential(1*time.Second, 2*time.Second),
+		},
 	}
 }
 
@@ -45,22 +47,24 @@ type Client struct {
 	// UnauthorizedGracePeriod is the amount of time Unauthorized responses from
 	// NMAgent will be tolerated and retried
 	UnauthorizedGracePeriod time.Duration
+
+	Retrier interface {
+		Do(context.Context, func() error) error
+	}
 }
 
 // JoinNetwork joins a node to a customer's virtual network
-func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
+func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
 	requestStart := time.Now()
 
-	// we need to be a little defensive, because there is no bad request response
-	// from NMAgent
-	if _, err := uuid.Parse(networkID); err != nil {
-		return fmt.Errorf("bad network ID %q: %w", networkID, err)
+	if err := jnr.Validate(); err != nil {
+		return fmt.Errorf("validating join network request: %w", err)
 	}
 
 	joinURL := &url.URL{
 		Scheme: "https",
 		Host:   c.hostPort(),
-		Path:   fmt.Sprintf(JoinNetworkPath, networkID),
+		Path:   jnr.Path(),
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL.String(), nil)
@@ -68,7 +72,7 @@ func (c *Client) JoinNetwork(ctx context.Context, networkID string) error {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	err = internal.BackoffRetry(ctx, func() error {
+	err = c.Retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing request: %w", err)
@@ -102,7 +106,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (Vi
 		return out, fmt.Errorf("creating http request to %q: %w", path.String(), err)
 	}
 
-	err = internal.BackoffRetry(ctx, func() error {
+	err = c.Retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing http request to %q: %w", path.String(), err)

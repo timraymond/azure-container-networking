@@ -6,7 +6,42 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/google/uuid"
 )
+
+// NetworkContainerRequest {{{1
+
+type NetworkContainerRequest struct {
+	ID      string `json:"networkContainerID"` // the id of the network container
+	VNetID  string `json:"virtualNetworkID"`   // the id of the customer's vnet
+	Version uint64 `json:"version"`            // the new network container version
+
+	// SubnetName is the name of the delegated subnet. This is used to
+	// authenticate the request. The list of ipv4addresses must be contained in
+	// the subnet's prefix.
+	SubnetName string `json:"subnetName"`
+
+	// IPv4 addresses in the customer virtual network that will be assigned to
+	// the interface.
+	IPv4Addrs []string `json:"ipV4Addresses"`
+
+	Policies []Policy `json:"policies"` // policies applied to the network container
+
+	// VlanID is used to distinguish Network Containers with duplicate customer
+	// addresses. "0" is considered a default value by the API.
+	VlanID int `json:"vlanId"`
+
+	// AuthenticationToken is the base64 security token for the subnet containing
+	// the Network Container addresses
+	AuthenticationToken string `json:"-"`
+
+	// PrimaryAddress is the primary customer address of the interface in the
+	// management VNet
+	PrimaryAddress string `json:"-"`
+}
+
+// Policy {{{2
 
 type Policy struct {
 	ID   string
@@ -43,34 +78,36 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
-type NetworkContainerRequest struct {
-	ID      string `json:"networkContainerID"` // the id of the network container
-	VNetID  string `json:"virtualNetworkID"`   // the id of the customer's vnet
-	Version uint64 `json:"version"`            // the new network container version
+// }}}2
 
-	// SubnetName is the name of the delegated subnet. This is used to
-	// authenticate the request. The list of ipv4addresses must be contained in
-	// the subnet's prefix.
-	SubnetName string `json:"subnetName"`
+// }}}1
 
-	// IPv4 addresses in the customer virtual network that will be assigned to
-	// the interface.
-	IPv4Addrs []string `json:"ipV4Addresses"`
+// JoinNetworkRequest {{{1
 
-	Policies []Policy `json:"policies"` // policies applied to the network container
-
-	// VlanID is used to distinguish Network Containers with duplicate customer
-	// addresses. "0" is considered a default value by the API.
-	VlanID int `json:"vlanId"`
-
-	// AuthenticationToken is the base64 security token for the subnet containing
-	// the Network Container addresses
-	AuthenticationToken string `json:"-"`
-
-	// PrimaryAddress is the primary customer address of the interface in the
-	// management VNet
-	PrimaryAddress string `json:"-"`
+type JoinNetworkRequest struct {
+	NetworkID string `json:"-"` // the customer's VNet ID
 }
+
+// Path constructs a URL path for invoking a JoinNetworkRequest using the
+// provided parameters
+func (j JoinNetworkRequest) Path() string {
+	const JoinNetworkPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
+	return fmt.Sprintf(JoinNetworkPath, j.NetworkID)
+}
+
+// Validate ensures that the provided parameters of the request are valid
+func (j JoinNetworkRequest) Validate() error {
+	// we need to be a little defensive, because there is no bad request response
+	// from NMAgent
+	if _, err := uuid.Parse(j.NetworkID); err != nil {
+		return fmt.Errorf("bad network ID %q: %w", j.NetworkID, err)
+	}
+	return nil
+}
+
+// }}}1
+
+// DeleteNetworkRequest {{{1
 
 // DeleteContainerRequest represents all information necessary to request that
 // NMAgent delete a particular network container
@@ -88,18 +125,6 @@ type DeleteContainerRequest struct {
 func (d DeleteContainerRequest) Path() string {
 	const DeleteNCPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1/method/DELETE"
 	return fmt.Sprintf(DeleteNCPath, d.PrimaryAddress, d.NCID, d.AuthenticationToken)
-}
-
-type ValidationError struct {
-	MissingFields []string
-}
-
-func (v ValidationError) Error() string {
-	return fmt.Sprintf("missing fields: %s", strings.Join(v.MissingFields, ", "))
-}
-
-func (v ValidationError) IsEmpty() bool {
-	return len(v.MissingFields) == 0
 }
 
 // Validate ensures that the DeleteContainerRequest has the correct information
@@ -125,3 +150,21 @@ func (d DeleteContainerRequest) Validate() error {
 
 	return nil
 }
+
+// }}}1
+
+// ValidationError {{{1
+
+type ValidationError struct {
+	MissingFields []string
+}
+
+func (v ValidationError) Error() string {
+	return fmt.Sprintf("missing fields: %s", strings.Join(v.MissingFields, ", "))
+}
+
+func (v ValidationError) IsEmpty() bool {
+	return len(v.MissingFields) == 0
+}
+
+// }}}1

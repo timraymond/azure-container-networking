@@ -92,7 +92,7 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 
 			// attempt to join network
 			// TODO(timraymond): need a more realistic network ID, I think
-			err := client.JoinNetwork(ctx, test.id)
+			err := client.JoinNetwork(ctx, nmagent.JoinNetworkRequest{test.id})
 			if err != nil && !test.shouldErr {
 				t.Fatal("unexpected error: err:", err)
 			}
@@ -139,7 +139,7 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 	}
 
 	// attempt to join network
-	err := client.JoinNetwork(ctx, "00000000-0000-0000-0000-000000000000")
+	err := client.JoinNetwork(ctx, nmagent.JoinNetworkRequest{"00000000-0000-0000-0000-000000000000"})
 	if err != nil {
 		t.Fatal("unexpected error: err:", err)
 	}
@@ -185,7 +185,7 @@ func TestNMAgentClientJoinNetworkUnauthorized(t *testing.T) {
 	}
 
 	// attempt to join network
-	err := client.JoinNetwork(ctx, "00000000-0000-0000-0000-000000000000")
+	err := client.JoinNetwork(ctx, nmagent.JoinNetworkRequest{"00000000-0000-0000-0000-000000000000"})
 	if err != nil {
 		t.Fatal("unexpected error: err:", err)
 	}

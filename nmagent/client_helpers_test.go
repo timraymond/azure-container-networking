@@ -14,5 +14,8 @@ func NewTestClient(tripper http.RoundTripper) *Client {
 				Transport: tripper,
 			},
 		},
+		Retrier: internal.Retrier{
+			Cooldown: internal.AsFastAsPossible,
+		},
 	}
 }
