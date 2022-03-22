@@ -71,3 +71,57 @@ type NetworkContainerRequest struct {
 	// management VNet
 	PrimaryAddress string `json:"-"`
 }
+
+// DeleteContainerRequest represents all information necessary to request that
+// NMAgent delete a particular network container
+type DeleteContainerRequest struct {
+	NCID string `json:"-"` // the Network Container ID
+
+	// PrimaryAddress is the primary customer address of the interface in the
+	// management VNET
+	PrimaryAddress      string `json:"-"`
+	AuthenticationToken string `json:"-"`
+}
+
+// Path returns the path for submitting a DeleteContainerRequest with
+// parameters interpolated correctly
+func (d DeleteContainerRequest) Path() string {
+	const DeleteNCPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1/method/DELETE"
+	return fmt.Sprintf(DeleteNCPath, d.PrimaryAddress, d.NCID, d.AuthenticationToken)
+}
+
+type ValidationError struct {
+	MissingFields []string
+}
+
+func (v ValidationError) Error() string {
+	return fmt.Sprintf("missing fields: %s", strings.Join(v.MissingFields, ", "))
+}
+
+func (v ValidationError) IsEmpty() bool {
+	return len(v.MissingFields) == 0
+}
+
+// Validate ensures that the DeleteContainerRequest has the correct information
+// to submit the request
+func (d DeleteContainerRequest) Validate() error {
+	errs := ValidationError{}
+
+	if d.NCID == "" {
+		errs.MissingFields = append(errs.MissingFields, "NCID")
+	}
+
+	if d.PrimaryAddress == "" {
+		errs.MissingFields = append(errs.MissingFields, "PrimaryAddress")
+	}
+
+	if d.AuthenticationToken == "" {
+		errs.MissingFields = append(errs.MissingFields, "AuthenticationToken")
+	}
+
+	if !errs.IsEmpty() {
+		return errs
+	}
+
+	return nil
+}

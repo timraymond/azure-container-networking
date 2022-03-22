@@ -50,3 +50,57 @@ func TestPolicyMarshal(t *testing.T) {
 		})
 	}
 }
+
+func TestDeleteContainerRequestValidation(t *testing.T) {
+	dcrTests := []struct {
+		name          string
+		req           nmagent.DeleteContainerRequest
+		shouldBeValid bool
+	}{
+		{
+			"empty",
+			nmagent.DeleteContainerRequest{},
+			false,
+		},
+		{
+			"missing ncid",
+			nmagent.DeleteContainerRequest{
+				PrimaryAddress:      "10.0.0.1",
+				AuthenticationToken: "swordfish",
+			},
+			false,
+		},
+		{
+			"missing primary address",
+			nmagent.DeleteContainerRequest{
+				NCID:                "00000000-0000-0000-0000-000000000000",
+				AuthenticationToken: "swordfish",
+			},
+			false,
+		},
+		{
+			"missing auth token",
+			nmagent.DeleteContainerRequest{
+				NCID:           "00000000-0000-0000-0000-000000000000",
+				PrimaryAddress: "10.0.0.1",
+			},
+			false,
+		},
+	}
+
+	for _, test := range dcrTests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := test.req.Validate()
+			if err != nil && test.shouldBeValid {
+				t.Fatal("unexpected validation errors: err:", err)
+			}
+
+			if err == nil && !test.shouldBeValid {
+				t.Fatal("expected request to be invalid but wasn't")
+			}
+		})
+	}
+}

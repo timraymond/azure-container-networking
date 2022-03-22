@@ -162,11 +162,36 @@ func (c *Client) PutNetworkContainer(ctx context.Context, nc NetworkContainerReq
 	return nil
 }
 
-func (c *Client) DeleteNetworkContainer(ctx context.Context) error {
-	return nil
-}
+// DeleteNetworkContainer removes a Network Container, its associated IP
+// addresses, and network policies from an interface
+func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainerRequest) error {
+	requestStart := time.Now()
 
-func (c *Client) GetNmAgentSupportedApiURLFmt(ctx context.Context) error {
+	if err := dcr.Validate(); err != nil {
+		return fmt.Errorf("validating request: %w", err)
+	}
+
+	path := &url.URL{
+		Scheme: "https",
+		Host:   c.hostPort(),
+		Path:   dcr.Path(),
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path.String(), nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("submitting request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return c.error(time.Since(requestStart), resp.StatusCode)
+	}
+
 	return nil
 }
 

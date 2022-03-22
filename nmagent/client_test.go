@@ -438,3 +438,51 @@ func TestNMAgentPutNetworkContainer(t *testing.T) {
 		})
 	}
 }
+
+func TestNMAgentDeleteNC(t *testing.T) {
+	deleteTests := []struct {
+		name      string
+		req       nmagent.DeleteContainerRequest
+		exp       string
+		shouldErr bool
+	}{
+		{
+			"happy path",
+			nmagent.DeleteContainerRequest{
+				NCID:                "00000000-0000-0000-0000-000000000000",
+				PrimaryAddress:      "10.0.0.1",
+				AuthenticationToken: "swordfish",
+			},
+			"/machine/plugins/?comp=nmagent&type=NetworkManagement/interfaces/10.0.0.1/networkContainers/00000000-0000-0000-0000-000000000000/authenticationToken/swordfish/api-version/1/method/DELETE",
+			false,
+		},
+	}
+
+	var got string
+	for _, test := range deleteTests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			client := nmagent.NewTestClient(&TestTripper{
+				RoundTripF: func(req *http.Request) (*http.Response, error) {
+					got = req.URL.Path
+					rr := httptest.NewRecorder()
+					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					return rr.Result(), nil
+				},
+			})
+
+			err := client.DeleteNetworkContainer(context.TODO(), test.req)
+			if err != nil && !test.shouldErr {
+				t.Fatal("unexpected error: err:", err)
+			}
+
+			if err == nil && test.shouldErr {
+				t.Fatal("expected error but received none")
+			}
+
+			if test.exp != got {
+				t.Errorf("received URL differs from expectation:\n\texp: %q:\n\tgot: %q", test.exp, got)
+			}
+		})
+	}
+}
