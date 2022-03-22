@@ -3,7 +3,6 @@ package nmagent
 import (
 	"bytes"
 	"context"
-	"dnc/nmagent/internal"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/google/uuid"
+	"dnc/nmagent/internal"
 )
 
 const (
