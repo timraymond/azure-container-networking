@@ -145,7 +145,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, nc NetworkContainerReq
 		return fmt.Errorf("encoding request as JSON: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, path.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path.String(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
@@ -154,6 +154,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, nc NetworkContainerReq
 	if err != nil {
 		return fmt.Errorf("submitting request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.error(time.Since(requestStart), resp.StatusCode)
