@@ -14,8 +14,25 @@ type Error struct {
 	Code    int           // the HTTP status code received
 }
 
+// Error constructs a string representation of this error in accordance with
+// the error interface
 func (e Error) Error() string {
-	return fmt.Sprintf("nmagent: http status %d", e.Code)
+	return fmt.Sprintf("nmagent: http status %d: %s", e.Code, e.Message())
+}
+
+// Message interprets the HTTP Status code from NMAgent and returns the
+// corresponding explanation from the documentation
+func (e Error) Message() string {
+	switch e.Code {
+	case http.StatusProcessing:
+		return "the request is taking time to process. the caller should try the request again"
+	case http.StatusUnauthorized:
+		return "the request did not originate from an interface with an OwningServiceInstanceId property"
+	case http.StatusInternalServerError:
+		return "error occurred during nmagent's request processing"
+	default:
+		return "undocumented nmagent error"
+	}
 }
 
 // Temporary reports whether the error encountered from NMAgent should be
