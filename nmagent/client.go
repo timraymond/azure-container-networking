@@ -1,7 +1,6 @@
 package nmagent
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,21 +13,45 @@ import (
 	"dnc/nmagent/internal"
 )
 
+// Option is a functional option for configuration optional behavior in the
+// client
+type Option func(*Client)
+
+// InsecureDisableTLS is an option to disable TLS communications with NMAgent
+func InsecureDisableTLS() Option {
+	return func(c *Client) {
+		c.disableTLS = true
+	}
+}
+
+// WithUnauthorizedGracePeriod is an option to treat Unauthorized (401)
+// responses from NMAgent as temporary errors for a configurable amount of time
+func WithUnauthorizedGracePeriod(grace time.Duration) Option {
+	return func(c *Client) {
+		c.unauthorizedGracePeriod = grace
+	}
+}
+
 // NewClient returns an initialized Client using the provided configuration
-func NewClient(host string, port uint16, grace time.Duration) *Client {
-	return &Client{
+func NewClient(host string, port uint16, opts ...Option) *Client {
+	client := &Client{
 		httpClient: &http.Client{
 			Transport: &internal.WireserverTransport{
 				Transport: http.DefaultTransport,
 			},
 		},
-		Host:                    host,
-		Port:                    port,
-		UnauthorizedGracePeriod: grace,
-		Retrier: internal.Retrier{
+		host: host,
+		port: port,
+		retrier: internal.Retrier{
 			Cooldown: internal.Exponential(1*time.Second, 2*time.Second),
 		},
 	}
+
+	for _, opt := range opts {
+		opt(client)
+	}
+
+	return client
 }
 
 // Client is an agent for exchanging information with NMAgent
@@ -36,14 +59,16 @@ type Client struct {
 	httpClient *http.Client
 
 	// config
-	Host string
-	Port uint16
+	host string
+	port uint16
 
-	// UnauthorizedGracePeriod is the amount of time Unauthorized responses from
+	disableTLS bool
+
+	// unauthorizedGracePeriod is the amount of time Unauthorized responses from
 	// NMAgent will be tolerated and retried
-	UnauthorizedGracePeriod time.Duration
+	unauthorizedGracePeriod time.Duration
 
-	Retrier interface {
+	retrier interface {
 		Do(context.Context, func() error) error
 	}
 }
@@ -52,22 +77,12 @@ type Client struct {
 func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
 	requestStart := time.Now()
 
-	if err := jnr.Validate(); err != nil {
-		return fmt.Errorf("validating join network request: %w", err)
-	}
-
-	joinURL := &url.URL{
-		Scheme: "https",
-		Host:   c.hostPort(),
-		Path:   jnr.Path(),
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL.String(), nil)
+	req, err := c.buildRequest(ctx, jnr)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return fmt.Errorf("building request: %w", err)
 	}
 
-	err = c.Retrier.Do(ctx, func() error {
+	err = c.retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("executing request: %w", err)
@@ -90,25 +105,15 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 
 	var out VirtualNetwork
 
-	if err := gncr.Validate(); err != nil {
-		return out, fmt.Errorf("validating request: %w", err)
-	}
-
-	path := &url.URL{
-		Scheme: "https",
-		Host:   c.hostPort(),
-		Path:   gncr.Path(),
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
+	req, err := c.buildRequest(ctx, gncr)
 	if err != nil {
-		return out, fmt.Errorf("creating http request to %q: %w", path.String(), err)
+		return out, fmt.Errorf("building request: %w", err)
 	}
 
-	err = c.Retrier.Do(ctx, func() error {
+	err = c.retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("executing http request to %q: %w", path.String(), err)
+			return fmt.Errorf("executing http request to: %w", err)
 		}
 		defer resp.Body.Close()
 
@@ -118,17 +123,13 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 
 		err = json.NewDecoder(resp.Body).Decode(&out)
 		if err != nil {
-			return fmt.Errorf("decoding json response for %q: %w", path.String(), err)
+			return fmt.Errorf("decoding json response: %w", err)
 		}
 
 		return nil
 	})
 
-	if err != nil {
-		// no need to wrap, as the retry wrapper is intended to be transparent
-		return out, err
-	}
-	return out, nil
+	return out, err
 }
 
 // PutNetworkContainer applies a Network Container goal state and publishes it
@@ -136,24 +137,9 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 func (c *Client) PutNetworkContainer(ctx context.Context, pncr PutNetworkContainerRequest) error {
 	requestStart := time.Now()
 
-	if err := pncr.Validate(); err != nil {
-		return fmt.Errorf("validating request: %w", err)
-	}
-
-	path := &url.URL{
-		Scheme: "https",
-		Host:   c.hostPort(),
-		Path:   pncr.Path(),
-	}
-
-	body, err := json.Marshal(pncr)
+	req, err := c.buildRequest(ctx, pncr)
 	if err != nil {
-		return fmt.Errorf("encoding request as JSON: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path.String(), bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return fmt.Errorf("building request: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -173,19 +159,9 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr PutNetworkContain
 func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainerRequest) error {
 	requestStart := time.Now()
 
-	if err := dcr.Validate(); err != nil {
-		return fmt.Errorf("validating request: %w", err)
-	}
-
-	path := &url.URL{
-		Scheme: "https",
-		Host:   c.hostPort(),
-		Path:   dcr.Path(),
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, path.String(), nil)
+	req, err := c.buildRequest(ctx, dcr)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		return fmt.Errorf("building request: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -202,8 +178,34 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainer
 }
 
 func (c *Client) hostPort() string {
-	port := strconv.Itoa(int(c.Port))
-	return net.JoinHostPort(c.Host, port)
+	port := strconv.Itoa(int(c.port))
+	return net.JoinHostPort(c.host, port)
+}
+
+func (c *Client) buildRequest(ctx context.Context, req Request) (*http.Request, error) {
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("validating request: %w", err)
+	}
+
+	fullURL := &url.URL{
+		Scheme: c.scheme(),
+		Host:   c.hostPort(),
+		Path:   req.Path(),
+	}
+
+	body, err := req.Body()
+	if err != nil {
+		return nil, fmt.Errorf("retrieving request body: %w", err)
+	}
+
+	return http.NewRequestWithContext(ctx, req.Method(), fullURL.String(), body)
+}
+
+func (c *Client) scheme() string {
+	if c.disableTLS {
+		return "http"
+	}
+	return "https"
 }
 
 // error constructs a NMAgent error while providing some information configured
@@ -211,7 +213,7 @@ func (c *Client) hostPort() string {
 func (c *Client) error(runtime time.Duration, code int) error {
 	return Error{
 		Runtime: runtime,
-		Limit:   c.UnauthorizedGracePeriod,
+		Limit:   c.unauthorizedGracePeriod,
 		Code:    code,
 	}
 }

@@ -4,13 +4,38 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"unicode"
 
 	"github.com/google/uuid"
 )
 
+// Request {{{1
+
+// Request represents an abstracted HTTP request, capable of validating itself,
+// producting a valid Path, Body, and its Method
+type Request interface {
+	// Validate should ensure that the request is valid to submit
+	Validate() error
+
+	// Path should produce a URL path, complete with any URL parameters
+	// interpolated
+	Path() string
+
+	// Body produces the HTTP request body necessary to submit the request
+	Body() (io.Reader, error)
+
+	// Method returns the HTTP Method to be used for the request.
+	Method() string
+}
+
+// }}}1
+
 // PutNetworkContainerRequest {{{1
+
+var _ Request = PutNetworkContainerRequest{}
 
 // PutNetworkContainerRequest is a collection of parameters necessary to create
 // a new network container
@@ -44,6 +69,22 @@ type PutNetworkContainerRequest struct {
 	// PrimaryAddress is the primary customer address of the interface in the
 	// management VNet
 	PrimaryAddress string `json:"-"`
+}
+
+// Body marshals the JSON fields of the request and produces an Reader intended
+// for use with an HTTP request
+func (p PutNetworkContainerRequest) Body() (io.Reader, error) {
+	body, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling PutNetworkContainerRequest: %w", err)
+	}
+
+	return bytes.NewReader(body), nil
+}
+
+// Method returns the HTTP method for this request type
+func (p PutNetworkContainerRequest) Method() string {
+	return http.MethodPost
 }
 
 // Path returns the URL path necessary to submit this PutNetworkContainerRequest
@@ -126,6 +167,8 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 
 // JoinNetworkRequest {{{1
 
+var _ Request = JoinNetworkRequest{}
+
 type JoinNetworkRequest struct {
 	NetworkID string `json:"-"` // the customer's VNet ID
 }
@@ -135,6 +178,16 @@ type JoinNetworkRequest struct {
 func (j JoinNetworkRequest) Path() string {
 	const JoinNetworkPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 	return fmt.Sprintf(JoinNetworkPath, j.NetworkID)
+}
+
+// Body returns nothing, because JoinNetworkRequest has no request body
+func (j JoinNetworkRequest) Body() (io.Reader, error) {
+	return nil, nil
+}
+
+// Method returns the HTTP request method to submit a JoinNetworkRequest
+func (j JoinNetworkRequest) Method() string {
+	return http.MethodPost
 }
 
 // Validate ensures that the provided parameters of the request are valid
@@ -150,6 +203,8 @@ func (j JoinNetworkRequest) Validate() error {
 // }}}1
 
 // DeleteNetworkRequest {{{1
+
+var _ Request = DeleteContainerRequest{}
 
 // DeleteContainerRequest represents all information necessary to request that
 // NMAgent delete a particular network container
@@ -167,6 +222,16 @@ type DeleteContainerRequest struct {
 func (d DeleteContainerRequest) Path() string {
 	const DeleteNCPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1/method/DELETE"
 	return fmt.Sprintf(DeleteNCPath, d.PrimaryAddress, d.NCID, d.AuthenticationToken)
+}
+
+// Body returns nothing, because DeleteContainerRequests have no HTTP body
+func (d DeleteContainerRequest) Body() (io.Reader, error) {
+	return nil, nil
+}
+
+// Method returns the HTTP method required to submit a DeleteContainerRequest
+func (d DeleteContainerRequest) Method() string {
+	return http.MethodPost
 }
 
 // Validate ensures that the DeleteContainerRequest has the correct information
@@ -197,6 +262,8 @@ func (d DeleteContainerRequest) Validate() error {
 
 // GetNetworkConfigRequest {{{1
 
+var _ Request = GetNetworkConfigRequest{}
+
 // GetNetworkConfigRequest is a collection of necessary information for
 // submitting a request for a customer's network configuration
 type GetNetworkConfigRequest struct {
@@ -207,6 +274,17 @@ type GetNetworkConfigRequest struct {
 func (g GetNetworkConfigRequest) Path() string {
 	const GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
 	return fmt.Sprintf(GetNetworkConfigPath, g.VNetID)
+}
+
+// Body returns nothing because GetNetworkConfigRequest has no HTTP request
+// body
+func (g GetNetworkConfigRequest) Body() (io.Reader, error) {
+	return nil, nil
+}
+
+// Method returns the HTTP method required to submit a GetNetworkConfigRequest
+func (g GetNetworkConfigRequest) Method() string {
+	return http.MethodGet
 }
 
 // Validate ensures that the request is complete and the parameters are correct
