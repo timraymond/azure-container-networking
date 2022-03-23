@@ -14,10 +14,6 @@ import (
 	"dnc/nmagent/internal"
 )
 
-const (
-	PutNCRequestPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
-)
-
 // NewClient returns an initialized Client using the provided configuration
 func NewClient(host string, port uint16, grace time.Duration) *Client {
 	return &Client{
@@ -137,16 +133,20 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 
 // PutNetworkContainer applies a Network Container goal state and publishes it
 // to PubSub
-func (c *Client) PutNetworkContainer(ctx context.Context, nc NetworkContainerRequest) error {
+func (c *Client) PutNetworkContainer(ctx context.Context, pncr PutNetworkContainerRequest) error {
 	requestStart := time.Now()
+
+	if err := pncr.Validate(); err != nil {
+		return fmt.Errorf("validating request: %w", err)
+	}
 
 	path := &url.URL{
 		Scheme: "https",
 		Host:   c.hostPort(),
-		Path:   fmt.Sprintf(PutNCRequestPath, nc.PrimaryAddress, nc.ID, nc.AuthenticationToken),
+		Path:   pncr.Path(),
 	}
 
-	body, err := json.Marshal(nc)
+	body, err := json.Marshal(pncr)
 	if err != nil {
 		return fmt.Errorf("encoding request as JSON: %w", err)
 	}

@@ -10,9 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// NetworkContainerRequest {{{1
+// PutNetworkContainerRequest {{{1
 
-type NetworkContainerRequest struct {
+// PutNetworkContainerRequest is a collection of parameters necessary to create
+// a new network container
+type PutNetworkContainerRequest struct {
 	ID      string `json:"networkContainerID"` // the id of the network container
 	VNetID  string `json:"virtualNetworkID"`   // the id of the customer's vnet
 	Version uint64 `json:"version"`            // the new network container version
@@ -32,6 +34,9 @@ type NetworkContainerRequest struct {
 	// addresses. "0" is considered a default value by the API.
 	VlanID int `json:"vlanId"`
 
+	// VirtualNetworkID is the ID of the customer's virtual network
+	VirtualNetworkID string `json:"virtualNetworkId"`
+
 	// AuthenticationToken is the base64 security token for the subnet containing
 	// the Network Container addresses
 	AuthenticationToken string `json:"-"`
@@ -39,6 +44,43 @@ type NetworkContainerRequest struct {
 	// PrimaryAddress is the primary customer address of the interface in the
 	// management VNet
 	PrimaryAddress string `json:"-"`
+}
+
+// Path returns the URL path necessary to submit this PutNetworkContainerRequest
+func (p PutNetworkContainerRequest) Path() string {
+	const PutNCRequestPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
+	return fmt.Sprintf(PutNCRequestPath, p.PrimaryAddress, p.ID, p.AuthenticationToken)
+}
+
+// Validate ensures that all of the required parameters of the request have
+// been filled out properly prior to submission to NMAgent
+func (p PutNetworkContainerRequest) Validate() error {
+	var errs ValidationError
+
+	if len(p.IPv4Addrs) == 0 {
+		errs.MissingFields = append(errs.MissingFields, "IPv4Addrs")
+	}
+
+	if p.SubnetName == "" {
+		errs.MissingFields = append(errs.MissingFields, "SubnetName")
+	}
+
+	// it's a little unclear as to whether a version value of "0" is actually
+	// legal. Given that this is the zero value of this field, and the
+	// documentation of NMAgent requires this to be a uint64, we'll consider "0"
+	// as unset and require it to be something else.
+	if p.Version == uint64(0) {
+		errs.MissingFields = append(errs.MissingFields, "Version")
+	}
+
+	if p.VirtualNetworkID == "" {
+		errs.MissingFields = append(errs.MissingFields, "VirtualNetworkID")
+	}
+
+	if errs.IsEmpty() {
+		return nil
+	}
+	return errs
 }
 
 // Policy {{{2
