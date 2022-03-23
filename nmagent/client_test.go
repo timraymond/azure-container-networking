@@ -70,7 +70,7 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 
 			// create a client
 			var got string
-			client := nmagent.NewTestClient(&TestTripper{
+			client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.URL.Path
 					rr := httptest.NewRecorder()
@@ -78,7 +78,7 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 					rr.WriteHeader(http.StatusOK)
 					return rr.Result(), nil
 				},
-			})
+			}), nmagent.NoBackoff())
 
 			// if the test provides a timeout, use it in the context
 			var ctx context.Context
@@ -114,7 +114,7 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 	invocations := 0
 	exp := 10
 
-	client := nmagent.NewTestClient(&TestTripper{
+	client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 		RoundTripF: func(req *http.Request) (*http.Response, error) {
 			rr := httptest.NewRecorder()
 			if invocations < exp {
@@ -126,7 +126,7 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 			rr.Write([]byte(`{"httpStatusCode": "200"}`))
 			return rr.Result(), nil
 		},
-	})
+	}), nmagent.NoBackoff())
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -158,7 +158,7 @@ func TestNMAgentClientJoinNetworkUnauthorized(t *testing.T) {
 	invocations := 0
 	exp := 10
 
-	client := nmagent.NewTestClient(&TestTripper{
+	client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 		RoundTripF: func(req *http.Request) (*http.Response, error) {
 			rr := httptest.NewRecorder()
 			if invocations < exp {
@@ -170,9 +170,7 @@ func TestNMAgentClientJoinNetworkUnauthorized(t *testing.T) {
 			rr.Write([]byte(`{"httpStatusCode": "200"}`))
 			return rr.Result(), nil
 		},
-	})
-
-	client.UnauthorizedGracePeriod = 1 * time.Minute
+	}), nmagent.WithUnauthorizedGracePeriod(1*time.Minute), nmagent.NoBackoff())
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -231,7 +229,7 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 			t.Parallel()
 
 			var got string
-			client := nmagent.NewTestClient(&TestTripper{
+			client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					rr := httptest.NewRecorder()
 					got = req.URL.Path
@@ -243,7 +241,7 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 
 					return rr.Result(), nil
 				},
-			})
+			}), nmagent.NoBackoff())
 
 			// if the test provides a timeout, use it in the context
 			var ctx context.Context
@@ -289,7 +287,7 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 
 	count := 0
 	exp := 10
-	client := nmagent.NewTestClient(&TestTripper{
+	client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 		RoundTripF: func(req *http.Request) (*http.Response, error) {
 			rr := httptest.NewRecorder()
 			if count < exp {
@@ -303,7 +301,7 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 			rr.Write([]byte(`{"httpStatusCode": "200"}`))
 			return rr.Result(), nil
 		},
-	})
+	}), nmagent.NoBackoff())
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -330,7 +328,7 @@ func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
 
 	count := 0
 	exp := 10
-	client := nmagent.NewTestClient(&TestTripper{
+	client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 		RoundTripF: func(req *http.Request) (*http.Response, error) {
 			rr := httptest.NewRecorder()
 			if count < exp {
@@ -345,9 +343,7 @@ func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
 
 			return rr.Result(), nil
 		},
-	})
-
-	client.UnauthorizedGracePeriod = 1 * time.Minute
+	}), nmagent.WithUnauthorizedGracePeriod(1*time.Minute), nmagent.NoBackoff())
 
 	// if the test provides a timeout, use it in the context
 	var ctx context.Context
@@ -410,7 +406,7 @@ func TestNMAgentPutNetworkContainer(t *testing.T) {
 			t.Parallel()
 
 			didCall := false
-			client := nmagent.NewTestClient(&TestTripper{
+			client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					rr := httptest.NewRecorder()
 					rr.Write([]byte(`{"httpStatusCode": "200"}`))
@@ -418,7 +414,7 @@ func TestNMAgentPutNetworkContainer(t *testing.T) {
 					didCall = true
 					return rr.Result(), nil
 				},
-			})
+			}), nmagent.NoBackoff())
 
 			err := client.PutNetworkContainer(context.TODO(), test.req)
 			if err != nil && !test.shouldErr {
@@ -463,14 +459,14 @@ func TestNMAgentDeleteNC(t *testing.T) {
 	for _, test := range deleteTests {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			client := nmagent.NewTestClient(&TestTripper{
+			client := nmagent.NewClient("localhost", 8080, nmagent.WithTransport(&TestTripper{
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.URL.Path
 					rr := httptest.NewRecorder()
 					rr.Write([]byte(`{"httpStatusCode": "200"}`))
 					return rr.Result(), nil
 				},
-			})
+			}), nmagent.NoBackoff())
 
 			err := client.DeleteNetworkContainer(context.TODO(), test.req)
 			if err != nil && !test.shouldErr {

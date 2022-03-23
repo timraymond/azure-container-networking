@@ -13,25 +13,6 @@ import (
 	"dnc/nmagent/internal"
 )
 
-// Option is a functional option for configuration optional behavior in the
-// client
-type Option func(*Client)
-
-// InsecureDisableTLS is an option to disable TLS communications with NMAgent
-func InsecureDisableTLS() Option {
-	return func(c *Client) {
-		c.disableTLS = true
-	}
-}
-
-// WithUnauthorizedGracePeriod is an option to treat Unauthorized (401)
-// responses from NMAgent as temporary errors for a configurable amount of time
-func WithUnauthorizedGracePeriod(grace time.Duration) Option {
-	return func(c *Client) {
-		c.unauthorizedGracePeriod = grace
-	}
-}
-
 // NewClient returns an initialized Client using the provided configuration
 func NewClient(host string, port uint16, opts ...Option) *Client {
 	client := &Client{
@@ -43,7 +24,7 @@ func NewClient(host string, port uint16, opts ...Option) *Client {
 		host: host,
 		port: port,
 		retrier: internal.Retrier{
-			Cooldown: internal.Exponential(1*time.Second, 2*time.Second),
+			Cooldown: internal.Exponential(1*time.Second, 2),
 		},
 	}
 
@@ -70,6 +51,25 @@ type Client struct {
 
 	retrier interface {
 		Do(context.Context, func() error) error
+	}
+}
+
+// Option is a functional option for configuration optional behavior in the
+// client
+type Option func(*Client)
+
+// InsecureDisableTLS is an option to disable TLS communications with NMAgent
+func InsecureDisableTLS() Option {
+	return func(c *Client) {
+		c.disableTLS = true
+	}
+}
+
+// WithUnauthorizedGracePeriod is an option to treat Unauthorized (401)
+// responses from NMAgent as temporary errors for a configurable amount of time
+func WithUnauthorizedGracePeriod(grace time.Duration) Option {
+	return func(c *Client) {
+		c.unauthorizedGracePeriod = grace
 	}
 }
 

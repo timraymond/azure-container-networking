@@ -14,13 +14,15 @@ type TemporaryError interface {
 }
 
 type Retrier struct {
-	Cooldown func() error
+	Cooldown CooldownFactory
 }
 
 // Do repeatedly invokes the provided run function while the context remains
 // active. It waits in between invocations of the provided functions by
 // delegating to the provided Cooldown function
 func (r Retrier) Do(ctx context.Context, run func() error) error {
+	cooldown := r.Cooldown()
+
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -31,7 +33,7 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 			// check to see if it's temporary
 			var tempErr TemporaryError
 			if ok := errors.As(err, &tempErr); ok && tempErr.Temporary() {
-				err := r.Cooldown()
+				err := cooldown()
 				if err != nil {
 					return fmt.Errorf("sleeping during retry: %w", err)
 				}
@@ -45,38 +47,62 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 	}
 }
 
-func Max(limit int, f func() error) func() error {
-	count := 0
-	return func() error {
-		if count >= limit {
-			return fmt.Errorf("maximum attempts reached (%d)", limit)
-		}
+// CooldownFunc is a function that will block when called. It is intended for
+// use with retry logic.
+type CooldownFunc func() error
 
-		err := f()
-		if err != nil {
-			return err
+// CooldownFactory is a function that returns CooldownFuncs. It helps
+// CooldownFuncs dispose of any accumulated state so that they function
+// correctly upon successive uses.
+type CooldownFactory func() CooldownFunc
+
+func Max(limit int, factory CooldownFactory) CooldownFactory {
+	return func() CooldownFunc {
+		cooldown := factory()
+		count := 0
+		return func() error {
+			if count >= limit {
+				return fmt.Errorf("maximum attempts reached (%d)", limit)
+			}
+
+			err := cooldown()
+			if err != nil {
+				return err
+			}
+			count++
+			return nil
 		}
-		count++
-		return nil
 	}
 }
 
-func AsFastAsPossible() error { return nil }
-
-func Exponential(interval time.Duration, base time.Duration) func() error {
-	count := 0
-	return func() error {
-		increment := math.Pow(float64(base.Nanoseconds()), float64(count))
-		delay := interval.Nanoseconds() * int64(increment)
-		time.Sleep(time.Duration(delay))
-		count++
-		return nil
+// AsFastAsPossible is a Cooldown strategy that does not block, allowing retry
+// logic to proceed as fast as possible. This is particularly useful in tests
+func AsFastAsPossible() CooldownFactory {
+	return func() CooldownFunc {
+		return func() error {
+			return nil
+		}
 	}
 }
 
-func Fixed(interval time.Duration) func() error {
-	return func() error {
-		time.Sleep(interval)
-		return nil
+func Exponential(interval time.Duration, base int) CooldownFactory {
+	return func() CooldownFunc {
+		count := 0
+		return func() error {
+			increment := math.Pow(float64(base), float64(count))
+			delay := interval.Nanoseconds() * int64(increment)
+			time.Sleep(time.Duration(delay))
+			count++
+			return nil
+		}
+	}
+}
+
+func Fixed(interval time.Duration) CooldownFactory {
+	return func() CooldownFunc {
+		return func() error {
+			time.Sleep(interval)
+			return nil
+		}
 	}
 }
