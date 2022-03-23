@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
-	PutNCRequestPath     string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
+	PutNCRequestPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
 )
 
 // NewClient returns an initialized Client using the provided configuration
@@ -90,16 +89,20 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
 // network. Only subnets which have been delegated will be returned
-func (c *Client) GetNetworkConfiguration(ctx context.Context, vnetID string) (VirtualNetwork, error) {
+func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkConfigRequest) (VirtualNetwork, error) {
 	requestStart := time.Now()
+
+	var out VirtualNetwork
+
+	if err := gncr.Validate(); err != nil {
+		return out, fmt.Errorf("validating request: %w", err)
+	}
 
 	path := &url.URL{
 		Scheme: "https",
 		Host:   c.hostPort(),
-		Path:   fmt.Sprintf(GetNetworkConfigPath, vnetID),
+		Path:   gncr.Path(),
 	}
-
-	var out VirtualNetwork
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
 	if err != nil {

@@ -153,6 +153,37 @@ func (d DeleteContainerRequest) Validate() error {
 
 // }}}1
 
+// GetNetworkConfigRequest {{{1
+
+// GetNetworkConfigRequest is a collection of necessary information for
+// submitting a request for a customer's network configuration
+type GetNetworkConfigRequest struct {
+	VNetID string `json:"-"` // the customer's virtual network ID
+}
+
+// Path produces a URL path used to submit a request
+func (g GetNetworkConfigRequest) Path() string {
+	const GetNetworkConfigPath string = "/NetworkManagement/joinedVirtualNetworks/%s/api-version/1"
+	return fmt.Sprintf(GetNetworkConfigPath, g.VNetID)
+}
+
+// Validate ensures that the request is complete and the parameters are correct
+func (g GetNetworkConfigRequest) Validate() error {
+	errs := ValidationError{}
+
+	if g.VNetID == "" {
+		errs.MissingFields = append(errs.MissingFields, "VNetID")
+	}
+
+	if !errs.IsEmpty() {
+		return errs
+	}
+
+	return nil
+}
+
+// }}}1
+
 // ValidationError {{{1
 
 type ValidationError struct {

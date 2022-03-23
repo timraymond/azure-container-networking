@@ -255,7 +255,7 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 				ctx = context.Background()
 			}
 
-			gotVNet, err := client.GetNetworkConfiguration(ctx, test.vnetID)
+			gotVNet, err := client.GetNetworkConfiguration(ctx, nmagent.GetNetworkConfigRequest{test.vnetID})
 			if err != nil && !test.shouldErr {
 				t.Fatal("unexpected error: err:", err)
 			}
@@ -315,7 +315,7 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 		ctx = context.Background()
 	}
 
-	_, err := client.GetNetworkConfiguration(ctx, "00000000-0000-0000-0000-000000000000")
+	_, err := client.GetNetworkConfiguration(ctx, nmagent.GetNetworkConfigRequest{"00000000-0000-0000-0000-000000000000"})
 	if err != nil {
 		t.Fatal("unexpected error: err:", err)
 	}
@@ -359,7 +359,7 @@ func TestNMAgentGetNetworkConfigUnauthorized(t *testing.T) {
 		ctx = context.Background()
 	}
 
-	_, err := client.GetNetworkConfiguration(ctx, "00000000-0000-0000-0000-000000000000")
+	_, err := client.GetNetworkConfiguration(ctx, nmagent.GetNetworkConfigRequest{"00000000-0000-0000-0000-000000000000"})
 	if err != nil {
 		t.Fatal("unexpected error: err:", err)
 	}

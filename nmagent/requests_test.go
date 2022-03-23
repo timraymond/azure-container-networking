@@ -154,3 +154,67 @@ func TestJoinNetworkRequestValidate(t *testing.T) {
 		})
 	}
 }
+
+func TestGetNetworkConfigRequestPath(t *testing.T) {
+	pathTests := []struct {
+		name string
+		req  nmagent.GetNetworkConfigRequest
+		exp  string
+	}{
+		{
+			"happy path",
+			nmagent.GetNetworkConfigRequest{
+				VNetID: "00000000-0000-0000-0000-000000000000",
+			},
+			"/NetworkManagement/joinedVirtualNetworks/00000000-0000-0000-0000-000000000000/api-version/1",
+		},
+	}
+
+	for _, test := range pathTests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := test.req.Path(); got != test.exp {
+				t.Error("unexpected path: exp:", test.exp, "got:", got)
+			}
+		})
+	}
+}
+
+func TestGetNetworkConfigRequestValidate(t *testing.T) {
+	validateTests := []struct {
+		name          string
+		req           nmagent.GetNetworkConfigRequest
+		shouldBeValid bool
+	}{
+		{
+			"happy path",
+			nmagent.GetNetworkConfigRequest{
+				VNetID: "00000000-0000-0000-0000-000000000000",
+			},
+			true,
+		},
+		{
+			"empty",
+			nmagent.GetNetworkConfigRequest{},
+			false,
+		},
+	}
+
+	for _, test := range validateTests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := test.req.Validate()
+			if err != nil && test.shouldBeValid {
+				t.Fatal("expected request to be valid but wasn't: err:", err)
+			}
+
+			if err == nil && !test.shouldBeValid {
+				t.Fatal("expected error to be invalid but wasn't")
+			}
+		})
+	}
+}
