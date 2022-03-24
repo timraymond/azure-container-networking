@@ -2,14 +2,13 @@ package nmagent
 
 import (
 	"bytes"
+	"dnc/nmagent/internal"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"unicode"
-
-	"github.com/google/uuid"
 )
 
 // Request {{{1
@@ -40,18 +39,20 @@ var _ Request = PutNetworkContainerRequest{}
 // PutNetworkContainerRequest is a collection of parameters necessary to create
 // a new network container
 type PutNetworkContainerRequest struct {
-	ID      string `json:"networkContainerID"` // the id of the network container
-	VNetID  string `json:"virtualNetworkID"`   // the id of the customer's vnet
-	Version uint64 `json:"version"`            // the new network container version
+	ID     string `json:"networkContainerID"` // the id of the network container
+	VNetID string `json:"virtualNetworkID"`   // the id of the customer's vnet
+
+	// Version is the new network container version
+	Version uint64 `validate:"presence" json:"version"`
 
 	// SubnetName is the name of the delegated subnet. This is used to
 	// authenticate the request. The list of ipv4addresses must be contained in
 	// the subnet's prefix.
-	SubnetName string `json:"subnetName"`
+	SubnetName string `validate:"presence" json:"subnetName"`
 
 	// IPv4 addresses in the customer virtual network that will be assigned to
 	// the interface.
-	IPv4Addrs []string `json:"ipV4Addresses"`
+	IPv4Addrs []string `validate:"presence" json:"ipV4Addresses"`
 
 	Policies []Policy `json:"policies"` // policies applied to the network container
 
@@ -60,7 +61,7 @@ type PutNetworkContainerRequest struct {
 	VlanID int `json:"vlanId"`
 
 	// VirtualNetworkID is the ID of the customer's virtual network
-	VirtualNetworkID string `json:"virtualNetworkId"`
+	VirtualNetworkID string `validate:"presence" json:"virtualNetworkId"`
 
 	// AuthenticationToken is the base64 security token for the subnet containing
 	// the Network Container addresses
@@ -96,32 +97,7 @@ func (p PutNetworkContainerRequest) Path() string {
 // Validate ensures that all of the required parameters of the request have
 // been filled out properly prior to submission to NMAgent
 func (p PutNetworkContainerRequest) Validate() error {
-	var errs ValidationError
-
-	if len(p.IPv4Addrs) == 0 {
-		errs.MissingFields = append(errs.MissingFields, "IPv4Addrs")
-	}
-
-	if p.SubnetName == "" {
-		errs.MissingFields = append(errs.MissingFields, "SubnetName")
-	}
-
-	// it's a little unclear as to whether a version value of "0" is actually
-	// legal. Given that this is the zero value of this field, and the
-	// documentation of NMAgent requires this to be a uint64, we'll consider "0"
-	// as unset and require it to be something else.
-	if p.Version == uint64(0) {
-		errs.MissingFields = append(errs.MissingFields, "Version")
-	}
-
-	if p.VirtualNetworkID == "" {
-		errs.MissingFields = append(errs.MissingFields, "VirtualNetworkID")
-	}
-
-	if errs.IsEmpty() {
-		return nil
-	}
-	return errs
+	return internal.Validate(p)
 }
 
 // Policy {{{2
@@ -170,7 +146,7 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 var _ Request = JoinNetworkRequest{}
 
 type JoinNetworkRequest struct {
-	NetworkID string `json:"-"` // the customer's VNet ID
+	NetworkID string `validate:"presence" json:"-"` // the customer's VNet ID
 }
 
 // Path constructs a URL path for invoking a JoinNetworkRequest using the
@@ -192,12 +168,7 @@ func (j JoinNetworkRequest) Method() string {
 
 // Validate ensures that the provided parameters of the request are valid
 func (j JoinNetworkRequest) Validate() error {
-	// we need to be a little defensive, because there is no bad request response
-	// from NMAgent
-	if _, err := uuid.Parse(j.NetworkID); err != nil {
-		return fmt.Errorf("bad network ID %q: %w", j.NetworkID, err)
-	}
-	return nil
+	return internal.Validate(j)
 }
 
 // }}}1
@@ -209,12 +180,12 @@ var _ Request = DeleteContainerRequest{}
 // DeleteContainerRequest represents all information necessary to request that
 // NMAgent delete a particular network container
 type DeleteContainerRequest struct {
-	NCID string `json:"-"` // the Network Container ID
+	NCID string `validate:"presence" json:"-"` // the Network Container ID
 
 	// PrimaryAddress is the primary customer address of the interface in the
 	// management VNET
-	PrimaryAddress      string `json:"-"`
-	AuthenticationToken string `json:"-"`
+	PrimaryAddress      string `validate:"presence" json:"-"`
+	AuthenticationToken string `validate:"presence" json:"-"`
 }
 
 // Path returns the path for submitting a DeleteContainerRequest with
@@ -237,25 +208,7 @@ func (d DeleteContainerRequest) Method() string {
 // Validate ensures that the DeleteContainerRequest has the correct information
 // to submit the request
 func (d DeleteContainerRequest) Validate() error {
-	errs := ValidationError{}
-
-	if d.NCID == "" {
-		errs.MissingFields = append(errs.MissingFields, "NCID")
-	}
-
-	if d.PrimaryAddress == "" {
-		errs.MissingFields = append(errs.MissingFields, "PrimaryAddress")
-	}
-
-	if d.AuthenticationToken == "" {
-		errs.MissingFields = append(errs.MissingFields, "AuthenticationToken")
-	}
-
-	if !errs.IsEmpty() {
-		return errs
-	}
-
-	return nil
+	return internal.Validate(d)
 }
 
 // }}}1
@@ -267,7 +220,7 @@ var _ Request = GetNetworkConfigRequest{}
 // GetNetworkConfigRequest is a collection of necessary information for
 // submitting a request for a customer's network configuration
 type GetNetworkConfigRequest struct {
-	VNetID string `json:"-"` // the customer's virtual network ID
+	VNetID string `validate:"presence" json:"-"` // the customer's virtual network ID
 }
 
 // Path produces a URL path used to submit a request
@@ -289,33 +242,7 @@ func (g GetNetworkConfigRequest) Method() string {
 
 // Validate ensures that the request is complete and the parameters are correct
 func (g GetNetworkConfigRequest) Validate() error {
-	errs := ValidationError{}
-
-	if g.VNetID == "" {
-		errs.MissingFields = append(errs.MissingFields, "VNetID")
-	}
-
-	if !errs.IsEmpty() {
-		return errs
-	}
-
-	return nil
-}
-
-// }}}1
-
-// ValidationError {{{1
-
-type ValidationError struct {
-	MissingFields []string
-}
-
-func (v ValidationError) Error() string {
-	return fmt.Sprintf("missing fields: %s", strings.Join(v.MissingFields, ", "))
-}
-
-func (v ValidationError) IsEmpty() bool {
-	return len(v.MissingFields) == 0
+	return internal.Validate(g)
 }
 
 // }}}1

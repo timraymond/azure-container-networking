@@ -48,13 +48,6 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 			true,
 		},
 		{
-			"malformed UUID",
-			"00000000-0000",
-			"",
-			http.StatusOK, // this shouldn't be checked
-			true,
-		},
-		{
 			"internal error",
 			"00000000-0000-0000-0000-000000000000",
 			"/machine/plugins/?comp=nmagent&type=NetworkManagement/joinedVirtualNetworks/00000000-0000-0000-0000-000000000000/api-version/1",

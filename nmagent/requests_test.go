@@ -125,7 +125,7 @@ func TestJoinNetworkRequestValidate(t *testing.T) {
 		{
 			"invalid",
 			nmagent.JoinNetworkRequest{
-				NetworkID: "4815162342",
+				NetworkID: "",
 			},
 			false,
 		},
