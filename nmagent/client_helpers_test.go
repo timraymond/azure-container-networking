@@ -5,6 +5,10 @@ import (
 	"net/http"
 )
 
+// Note: this file exists to add two additional options with access to the
+// internals of Client. It's a *_test file so that it is only compiled during
+// tests.
+
 // WithTransport allows a test to specify a particular http.RoundTripper for
 // use in testing scenarios
 func WithTransport(tripper http.RoundTripper) Option {
