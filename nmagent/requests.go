@@ -11,8 +11,6 @@ import (
 	"unicode"
 )
 
-// Request {{{1
-
 // Request represents an abstracted HTTP request, capable of validating itself,
 // producting a valid Path, Body, and its Method
 type Request interface {
@@ -29,10 +27,6 @@ type Request interface {
 	// Method returns the HTTP Method to be used for the request.
 	Method() string
 }
-
-// }}}1
-
-// PutNetworkContainerRequest {{{1
 
 var _ Request = PutNetworkContainerRequest{}
 
@@ -100,8 +94,6 @@ func (p PutNetworkContainerRequest) Validate() error {
 	return internal.Validate(p)
 }
 
-// Policy {{{2
-
 type Policy struct {
 	ID   string
 	Type string
@@ -137,12 +129,6 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 	return nil
 }
 
-// }}}2
-
-// }}}1
-
-// JoinNetworkRequest {{{1
-
 var _ Request = JoinNetworkRequest{}
 
 type JoinNetworkRequest struct {
@@ -170,10 +156,6 @@ func (j JoinNetworkRequest) Method() string {
 func (j JoinNetworkRequest) Validate() error {
 	return internal.Validate(j)
 }
-
-// }}}1
-
-// DeleteNetworkRequest {{{1
 
 var _ Request = DeleteContainerRequest{}
 
@@ -211,10 +193,6 @@ func (d DeleteContainerRequest) Validate() error {
 	return internal.Validate(d)
 }
 
-// }}}1
-
-// GetNetworkConfigRequest {{{1
-
 var _ Request = GetNetworkConfigRequest{}
 
 // GetNetworkConfigRequest is a collection of necessary information for
@@ -244,5 +222,3 @@ func (g GetNetworkConfigRequest) Method() string {
 func (g GetNetworkConfigRequest) Validate() error {
 	return internal.Validate(g)
 }
-
-// }}}1
