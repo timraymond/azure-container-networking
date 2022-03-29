@@ -95,35 +95,40 @@ func TestFixed(t *testing.T) {
 	exp := 20 * time.Millisecond
 
 	cooldown := Fixed(exp)()
-	start := time.Now()
 
-	cooldown()
+	got, err := cooldown()
+	if err != nil {
+		t.Fatal("unexpected error invoking cooldown: err:", err)
+	}
 
-	if got := time.Since(start); got < exp {
+	if got != exp {
 		t.Fatal("unexpected sleep duration: exp:", exp, "got:", got)
 	}
 }
 
 func TestExp(t *testing.T) {
-	interval := 10 * time.Millisecond
+	exp := 10 * time.Millisecond
 	base := 2
 
-	cooldown := Exponential(interval, base)()
+	cooldown := Exponential(exp, base)()
 
-	start := time.Now()
-	cooldown()
+	first, err := cooldown()
+	if err != nil {
+		t.Fatal("unexpected error invoking cooldown: err:", err)
+	}
 
-	first := time.Since(start)
-	if first < interval {
-		t.Fatal("unexpected sleep during first cooldown: exp:", interval, "got:", first)
+	if first != exp {
+		t.Fatal("unexpected sleep during first cooldown: exp:", exp, "got:", first)
 	}
 
 	// ensure that the sleep increases
-	cooldown()
+	second, err := cooldown()
+	if err != nil {
+		t.Fatal("unexpected error on second invocation of cooldown: err:", err)
+	}
 
-	second := time.Since(start)
 	if second < first {
-		t.Fatal("unexpected sleep during first cooldown: exp:", interval, "got:", second)
+		t.Fatal("unexpected sleep during first cooldown: exp:", exp, "got:", second)
 	}
 }
 
@@ -133,16 +138,16 @@ func TestMax(t *testing.T) {
 
 	// create a test sleep function
 	fn := func() CooldownFunc {
-		return func() error {
+		return func() (time.Duration, error) {
 			got++
-			return nil
+			return 0 * time.Nanosecond, nil
 		}
 	}
 
 	cooldown := Max(10, fn)()
 
 	for i := 0; i < exp; i++ {
-		err := cooldown()
+		_, err := cooldown()
 		if err != nil {
 			t.Fatal("unexpected error from cooldown: err:", err)
 		}
@@ -153,7 +158,7 @@ func TestMax(t *testing.T) {
 	}
 
 	// attempt one more, we expect an error
-	err := cooldown()
+	_, err := cooldown()
 	if err == nil {
 		t.Errorf("expected an error after %d invocations but received none", exp+1)
 	}
