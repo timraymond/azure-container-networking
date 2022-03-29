@@ -8,11 +8,19 @@ import (
 	"time"
 )
 
+const (
+	noDelay = 0 * time.Nanosecond
+)
+
+// TemporaryError is an error that can indicate whether it may be resolved with
+// another attempt
 type TemporaryError interface {
 	error
 	Temporary() bool
 }
 
+// Retrier is a construct for attempting some operation multiple times with a
+// configurable backoff strategy
 type Retrier struct {
 	Cooldown CooldownFactory
 }
@@ -33,10 +41,11 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 			// check to see if it's temporary
 			var tempErr TemporaryError
 			if ok := errors.As(err, &tempErr); ok && tempErr.Temporary() {
-				err := cooldown()
+				delay, err := cooldown()
 				if err != nil {
 					return fmt.Errorf("sleeping during retry: %w", err)
 				}
+				time.Sleep(delay)
 				continue
 			}
 
@@ -49,28 +58,30 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 
 // CooldownFunc is a function that will block when called. It is intended for
 // use with retry logic.
-type CooldownFunc func() error
+type CooldownFunc func() (time.Duration, error)
 
 // CooldownFactory is a function that returns CooldownFuncs. It helps
 // CooldownFuncs dispose of any accumulated state so that they function
 // correctly upon successive uses.
 type CooldownFactory func() CooldownFunc
 
+// Max provides a fixed limit for the number of times a subordinate cooldown
+// function can be invoked
 func Max(limit int, factory CooldownFactory) CooldownFactory {
 	return func() CooldownFunc {
 		cooldown := factory()
 		count := 0
-		return func() error {
+		return func() (time.Duration, error) {
 			if count >= limit {
-				return fmt.Errorf("maximum attempts reached (%d)", limit)
+				return noDelay, fmt.Errorf("maximum attempts reached (%d)", limit)
 			}
 
-			err := cooldown()
+			delay, err := cooldown()
 			if err != nil {
-				return err
+				return noDelay, err
 			}
 			count++
-			return nil
+			return delay, nil
 		}
 	}
 }
@@ -79,30 +90,30 @@ func Max(limit int, factory CooldownFactory) CooldownFactory {
 // logic to proceed as fast as possible. This is particularly useful in tests
 func AsFastAsPossible() CooldownFactory {
 	return func() CooldownFunc {
-		return func() error {
-			return nil
+		return func() (time.Duration, error) {
+			return noDelay, nil
 		}
 	}
 }
 
+// Exponential provides an exponential increase the the base interval provided
 func Exponential(interval time.Duration, base int) CooldownFactory {
 	return func() CooldownFunc {
 		count := 0
-		return func() error {
+		return func() (time.Duration, error) {
 			increment := math.Pow(float64(base), float64(count))
 			delay := interval.Nanoseconds() * int64(increment)
-			time.Sleep(time.Duration(delay))
 			count++
-			return nil
+			return time.Duration(delay), nil
 		}
 	}
 }
 
-func Fixed(interval time.Duration) CooldownFactory {
+// Fixed produced the same delay value upon each invocation
+func Fixed(delay time.Duration) CooldownFactory {
 	return func() CooldownFunc {
-		return func() error {
-			time.Sleep(interval)
-			return nil
+		return func() (time.Duration, error) {
+			return delay, nil
 		}
 	}
 }
