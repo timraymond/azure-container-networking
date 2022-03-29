@@ -43,7 +43,7 @@ type Client struct {
 	host string
 	port uint16
 
-	disableTLS bool
+	enableTLS bool
 
 	// unauthorizedGracePeriod is the amount of time Unauthorized responses from
 	// NMAgent will be tolerated and retried
@@ -58,10 +58,11 @@ type Client struct {
 // client
 type Option func(*Client)
 
-// InsecureDisableTLS is an option to disable TLS communications with NMAgent
-func InsecureDisableTLS() Option {
+// EnableTLS is an option to force all connections to NMAgent to occur over
+// TLS.
+func EnableTLS() Option {
 	return func(c *Client) {
-		c.disableTLS = true
+		c.enableTLS = true
 	}
 }
 
@@ -202,10 +203,10 @@ func (c *Client) buildRequest(ctx context.Context, req Request) (*http.Request, 
 }
 
 func (c *Client) scheme() string {
-	if c.disableTLS {
-		return "http"
+	if c.enableTLS {
+		return "https"
 	}
-	return "https"
+	return "http"
 }
 
 // error constructs a NMAgent error while providing some information configured
