@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"dnc/nmagent/internal"
+	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
 
 // NewClient returns an initialized Client using the provided configuration

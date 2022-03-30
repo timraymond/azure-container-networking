@@ -1,10 +1,11 @@
 package nmagent_test
 
 import (
-	"dnc/nmagent"
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-container-networking/nmagent"
 )
 
 func TestErrorTemp(t *testing.T) {

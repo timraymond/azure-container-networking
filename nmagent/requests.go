@@ -2,13 +2,14 @@ package nmagent
 
 import (
 	"bytes"
-	"dnc/nmagent/internal"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"unicode"
+
+	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
 
 // Request represents an abstracted HTTP request, capable of validating itself,

@@ -1,9 +1,10 @@
 package nmagent_test
 
 import (
-	"dnc/nmagent"
 	"encoding/json"
 	"testing"
+
+	"github.com/Azure/azure-container-networking/nmagent"
 
 	"github.com/google/go-cmp/cmp"
 )

@@ -1,8 +1,9 @@
 package nmagent
 
 import (
-	"dnc/nmagent/internal"
 	"net/http"
+
+	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
 
 // Note: this file exists to add two additional options with access to the

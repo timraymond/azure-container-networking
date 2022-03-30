@@ -2,13 +2,14 @@ package nmagent_test
 
 import (
 	"context"
-	"dnc/nmagent"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-container-networking/nmagent"
 
 	"github.com/google/go-cmp/cmp"
 )
