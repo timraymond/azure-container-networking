@@ -44,9 +44,15 @@ type WireserverTransport struct {
 // RoundTrip executes arbitrary HTTP requests against Wireserver while applying
 // the necessary transformation rules to make such requests acceptable to
 // Wireserver
-func (w *WireserverTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, error) {
+	// RoundTrippers are not allowed to modify the request, so we clone it here.
+	// We need to extract the context from the request first since this is _not_
+	// cloned. The dependent Wireserver request should have the same deadline and
+	// cancellation properties as the inbound request though, hence the reuse.
+	ctx := inReq.Context()
+	req := inReq.Clone(ctx)
+
 	// the original path of the request must be prefixed with wireserver's path
-	origPath := req.URL.Path
 	path := WirePrefix
 	if req.URL.Path != "" {
 		path += req.URL.Path[1:]
@@ -63,18 +69,10 @@ func (w *WireserverTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	}
 
 	req.URL.Path = path
-	// ensure that nothing has changed from the caller's perspective by resetting
-	// the URL
-	defer func() {
-		req.URL.Path = origPath
-	}()
 
 	// wireserver cannot tolerate PUT requests, so it's necessary to transform those to POSTs
 	if req.Method == http.MethodPut {
 		req.Method = http.MethodPost
-		defer func() {
-			req.Method = http.MethodPut
-		}()
 	}
 
 	// all POST requests (and by extension, PUT) must have a non-nil body
