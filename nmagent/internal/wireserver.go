@@ -85,8 +85,12 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	if err != nil {
 		return resp, err
 	}
-	// we want to close this because we're going to replace it
-	defer resp.Body.Close()
+	// we need to take the body as an argument to this drain & close so we can
+	// bind to this specific instance because we intend to replace it
+	defer func(body io.ReadCloser) {
+		io.Copy(io.Discard, body)
+		body.Close()
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return resp, nil
