@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-// ValidationError {{{1
-
 type ValidationError struct {
 	MissingFields []string
 }
@@ -19,8 +17,6 @@ func (v ValidationError) Error() string {
 func (v ValidationError) IsEmpty() bool {
 	return len(v.MissingFields) == 0
 }
-
-// }}}1
 
 // Validate searches for validate struct tags and performs the validations
 // requested by them
