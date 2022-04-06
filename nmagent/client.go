@@ -122,6 +122,11 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 			return c.error(time.Since(requestStart), resp.StatusCode)
 		}
 
+		ct := resp.Header.Get(internal.HeaderContentType)
+		if ct != internal.MimeJSON {
+			return NewContentError(ct, resp.Body, resp.ContentLength)
+		}
+
 		err = json.NewDecoder(resp.Body).Decode(&out)
 		if err != nil {
 			return fmt.Errorf("decoding json response: %w", err)

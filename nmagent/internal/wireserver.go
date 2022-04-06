@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +11,20 @@ import (
 	"strings"
 )
 
-const WirePrefix string = "/machine/plugins/?comp=nmagent&type="
+const (
+	_ int64 = 1 << (10 * iota)
+	kilobyte
+	megabyte
+)
+
+const (
+	WirePrefix string = "/machine/plugins/?comp=nmagent&type="
+
+	// DefaultBufferSize is the maximum number of bytes read from Wireserver in
+	// the event that no Content-Length is provided. The responses are relatively
+	// small, so the smallest page size should be sufficient
+	DefaultBufferSize int64 = 4 * kilobyte
+)
 
 var _ http.RoundTripper = &WireserverTransport{}
 
@@ -70,7 +84,8 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 
 	req.URL.Path = path
 
-	// wireserver cannot tolerate PUT requests, so it's necessary to transform those to POSTs
+	// wireserver cannot tolerate PUT requests, so it's necessary to transform
+	// those to POSTs
 	if req.Method == http.MethodPut {
 		req.Method = http.MethodPost
 	}
@@ -85,23 +100,54 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	if err != nil {
 		return resp, err
 	}
-	// we need to take the body as an argument to this drain & close so we can
-	// bind to this specific instance because we intend to replace it
-	defer func(body io.ReadCloser) {
-		io.Copy(io.Discard, body)
-		body.Close()
-	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
+		// something happened at Wireserver, so we should just hand this back up
 		return resp, nil
 	}
 
-	// correct the HTTP status returned from wireserver
-	var wsResp WireserverResponse
-	err = json.NewDecoder(resp.Body).Decode(&wsResp)
-	if err != nil {
-		return resp, fmt.Errorf("decoding json response from wireserver: %w", err)
+	// at this point we're definitely going to modify the body, so we want to
+	// make sure we close the original request's body, since we're going to
+	// replace it
+	defer func(body io.ReadCloser) {
+		body.Close()
+	}(resp.Body)
+
+	// buffer the entire response from Wireserver
+	clen := resp.ContentLength
+	if clen < 0 {
+		clen = DefaultBufferSize
 	}
+
+	body := make([]byte, clen)
+	bodyReader := io.LimitReader(resp.Body, clen)
+
+	numRead, err := io.ReadFull(bodyReader, body)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, fmt.Errorf("reading response from wireserver: %w", err)
+	}
+	// it's entirely possible at this point that we read less than we allocated,
+	// so trim the slice back for decoding
+	body = body[:numRead]
+
+	// set the content length properly in case it wasn't set. If it was, this is
+	// effectively a no-op
+	resp.ContentLength = int64(numRead)
+
+	// it's unclear whether Wireserver sets Content-Type appropriately, so we
+	// attempt to decode it first and surface it otherwise
+	var wsResp WireserverResponse
+	err = json.Unmarshal(body, &wsResp)
+	if err != nil {
+		// probably not JSON, so figure out what it is, pack it up, and surface it
+		// unmodified
+		resp.Header.Set(HeaderContentType, http.DetectContentType(body))
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return resp, nil
+	}
+
+	// we know that it's JSON now, so communicate that upwards
+	resp.Header.Set(HeaderContentType, MimeJSON)
 
 	// set the response status code with the *real* status code
 	realCode, err := wsResp.StatusCode()
@@ -114,12 +160,12 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	// re-encode the body and re-attach it to the response
 	delete(wsResp, "httpStatusCode") // TODO(timraymond): concern of the response
 
-	body, err := json.Marshal(wsResp)
+	outBody, err := json.Marshal(wsResp)
 	if err != nil {
 		return resp, fmt.Errorf("re-encoding json response from wireserver: %w", err)
 	}
 
-	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.Body = io.NopCloser(bytes.NewReader(outBody))
 
 	return resp, nil
 }

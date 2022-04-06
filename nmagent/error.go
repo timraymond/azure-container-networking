@@ -1,10 +1,50 @@
 package nmagent
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
+
+	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
+
+// ContentError is encountered when an unexpected content type is obtained from
+// NMAgent
+type ContentError struct {
+	Type string // the mime type of the content received
+	Body []byte // the received body
+}
+
+func (c ContentError) Error() string {
+	if c.Type == internal.MimeOctetStream {
+		return fmt.Sprintf("unexpected content type %q: body length: %d", c.Type, len(c.Body))
+	}
+	return fmt.Sprintf("unexpected content type %q: body: %s", c.Type, c.Body)
+}
+
+// NewContentError creates a ContentError from a provided reader and limit.
+func NewContentError(contentType string, in io.Reader, limit int64) error {
+	out := ContentError{
+		Type: contentType,
+		Body: make([]byte, limit),
+	}
+
+	bodyReader := io.LimitReader(in, limit)
+
+	read, err := io.ReadFull(bodyReader, out.Body)
+	earlyEOF := errors.Is(err, io.ErrUnexpectedEOF)
+	if err != nil && !earlyEOF {
+		return fmt.Errorf("reading unexpected content body: %w", err)
+	}
+
+	if earlyEOF {
+		out.Body = out.Body[:read]
+	}
+
+	return out
+}
 
 // Error is a aberrent condition encountered when interacting with the NMAgent
 // API
