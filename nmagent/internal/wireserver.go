@@ -98,7 +98,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	// execute the request to the downstream transport
 	resp, err := w.Transport.RoundTrip(req)
 	if err != nil {
-		return resp, err
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
