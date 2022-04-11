@@ -15,25 +15,26 @@ import (
 )
 
 // NewClient returns an initialized Client using the provided configuration
-func NewClient(host string, port uint16, opts ...Option) *Client {
+func NewClient(c Config) (*Client, error) {
+	if err := c.Validate(); err != nil {
+		return nil, errors.Wrap(err, "validating config")
+	}
+
 	client := &Client{
 		httpClient: &http.Client{
 			Transport: &internal.WireserverTransport{
 				Transport: http.DefaultTransport,
 			},
 		},
-		host: host,
-		port: port,
+		host:      c.Host,
+		port:      c.Port,
+		enableTLS: c.UseTLS,
 		retrier: internal.Retrier{
 			Cooldown: internal.Exponential(1*time.Second, 2),
 		},
 	}
 
-	for _, opt := range opts {
-		opt(client)
-	}
-
-	return client
+	return client, nil
 }
 
 // Client is an agent for exchanging information with NMAgent
@@ -58,14 +59,6 @@ type Client struct {
 // Option is a functional option for configuration optional behavior in the
 // client
 type Option func(*Client)
-
-// EnableTLS is an option to force all connections to NMAgent to occur over
-// TLS.
-func EnableTLS() Option {
-	return func(c *Client) {
-		c.enableTLS = true
-	}
-}
 
 // WithUnauthorizedGracePeriod is an option to treat Unauthorized (401)
 // responses from NMAgent as temporary errors for a configurable amount of time
