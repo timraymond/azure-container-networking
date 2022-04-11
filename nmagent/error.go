@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	pkgerrors "github.com/pkg/errors"
+
 	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
 
@@ -36,7 +38,7 @@ func NewContentError(contentType string, in io.Reader, limit int64) error {
 	read, err := io.ReadFull(bodyReader, out.Body)
 	earlyEOF := errors.Is(err, io.ErrUnexpectedEOF)
 	if err != nil && !earlyEOF {
-		return fmt.Errorf("reading unexpected content body: %w", err)
+		return pkgerrors.Wrap(err, "reading unexpected content body")
 	}
 
 	if earlyEOF {

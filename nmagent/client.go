@@ -3,12 +3,13 @@ package nmagent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
@@ -80,13 +81,13 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 
 	req, err := c.buildRequest(ctx, jnr)
 	if err != nil {
-		return fmt.Errorf("building request: %w", err)
+		return errors.Wrap(err, "building request")
 	}
 
 	err = c.retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("executing request: %w", err)
+			return errors.Wrap(err, "executing request")
 		}
 		defer resp.Body.Close()
 
@@ -108,13 +109,13 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 
 	req, err := c.buildRequest(ctx, gncr)
 	if err != nil {
-		return out, fmt.Errorf("building request: %w", err)
+		return out, errors.Wrap(err, "building request")
 	}
 
 	err = c.retrier.Do(ctx, func() error {
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return fmt.Errorf("executing http request to: %w", err)
+			return errors.Wrap(err, "executing http request to")
 		}
 		defer resp.Body.Close()
 
@@ -129,7 +130,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 
 		err = json.NewDecoder(resp.Body).Decode(&out)
 		if err != nil {
-			return fmt.Errorf("decoding json response: %w", err)
+			return errors.Wrap(err, "decoding json response")
 		}
 
 		return nil
@@ -145,12 +146,12 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr PutNetworkContain
 
 	req, err := c.buildRequest(ctx, pncr)
 	if err != nil {
-		return fmt.Errorf("building request: %w", err)
+		return errors.Wrap(err, "building request")
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("submitting request: %w", err)
+		return errors.Wrap(err, "submitting request")
 	}
 	defer resp.Body.Close()
 
@@ -167,12 +168,12 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainer
 
 	req, err := c.buildRequest(ctx, dcr)
 	if err != nil {
-		return fmt.Errorf("building request: %w", err)
+		return errors.Wrap(err, "building request")
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("submitting request: %w", err)
+		return errors.Wrap(err, "submitting request")
 	}
 	defer resp.Body.Close()
 
@@ -190,7 +191,7 @@ func (c *Client) hostPort() string {
 
 func (c *Client) buildRequest(ctx context.Context, req Request) (*http.Request, error) {
 	if err := req.Validate(); err != nil {
-		return nil, fmt.Errorf("validating request: %w", err)
+		return nil, errors.Wrap(err, "validating request")
 	}
 
 	fullURL := &url.URL{
@@ -201,7 +202,7 @@ func (c *Client) buildRequest(ctx context.Context, req Request) (*http.Request, 
 
 	body, err := req.Body()
 	if err != nil {
-		return nil, fmt.Errorf("retrieving request body: %w", err)
+		return nil, errors.Wrap(err, "retrieving request body")
 	}
 
 	return http.NewRequestWithContext(ctx, req.Method(), fullURL.String(), body)

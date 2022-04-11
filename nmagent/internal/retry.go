@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -43,7 +45,7 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 			if ok := errors.As(err, &tempErr); ok && tempErr.Temporary() {
 				delay, err := cooldown()
 				if err != nil {
-					return fmt.Errorf("sleeping during retry: %w", err)
+					return pkgerrors.Wrap(err, "sleeping during retry")
 				}
 				time.Sleep(delay)
 				continue

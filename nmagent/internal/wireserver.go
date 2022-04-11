@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -37,11 +39,11 @@ func (w WireserverResponse) StatusCode() (int, error) {
 		var statusStr string
 		err := json.Unmarshal(status, &statusStr)
 		if err != nil {
-			return 0, fmt.Errorf("unmarshaling httpStatusCode from Wireserver: %w", err)
+			return 0, pkgerrors.Wrap(err, "unmarshaling httpStatusCode from Wireserver")
 		}
 
 		if code, err := strconv.Atoi(statusStr); err != nil {
-			return code, fmt.Errorf("parsing http status code from wireserver: %w", err)
+			return code, pkgerrors.Wrap(err, "parsing http status code from wireserver")
 		} else {
 			return code, nil
 		}
@@ -124,7 +126,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 
 	numRead, err := io.ReadFull(bodyReader, body)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return nil, fmt.Errorf("reading response from wireserver: %w", err)
+		return nil, pkgerrors.Wrap(err, "reading response from wireserver")
 	}
 	// it's entirely possible at this point that we read less than we allocated,
 	// so trim the slice back for decoding
@@ -152,7 +154,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	// set the response status code with the *real* status code
 	realCode, err := wsResp.StatusCode()
 	if err != nil {
-		return resp, fmt.Errorf("retrieving status code from wireserver response: %w", err)
+		return resp, pkgerrors.Wrap(err, "retrieving status code from wireserver response")
 	}
 
 	resp.StatusCode = realCode
@@ -162,7 +164,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 
 	outBody, err := json.Marshal(wsResp)
 	if err != nil {
-		return resp, fmt.Errorf("re-encoding json response from wireserver: %w", err)
+		return resp, pkgerrors.Wrap(err, "re-encoding json response from wireserver")
 	}
 
 	resp.Body = io.NopCloser(bytes.NewReader(outBody))

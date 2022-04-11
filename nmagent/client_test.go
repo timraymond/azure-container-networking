@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-container-networking/nmagent"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/pkg/errors"
+
+	"github.com/Azure/azure-container-networking/nmagent"
 )
 
 var _ http.RoundTripper = &TestTripper{}
@@ -230,7 +231,7 @@ func TestNMAgentGetNetworkConfig(t *testing.T) {
 					rr.WriteHeader(http.StatusOK)
 					err := json.NewEncoder(rr).Encode(&test.expVNet)
 					if err != nil {
-						return nil, fmt.Errorf("encoding response: %w", err)
+						return nil, errors.Wrap(err, "encoding response")
 					}
 
 					return rr.Result(), nil

@@ -2,12 +2,12 @@ package internal
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/pkg/errors"
 )
 
 type TestTripper struct {
@@ -136,7 +136,7 @@ func TestWireserverTransportStatusTransform(t *testing.T) {
 
 							err := json.NewEncoder(rr).Encode(&test.response)
 							if err != nil {
-								return nil, fmt.Errorf("encoding json response: %w", err)
+								return nil, errors.Wrap(err, "encoding json response")
 							}
 
 							return rr.Result(), nil

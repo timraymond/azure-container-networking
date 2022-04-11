@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/pkg/errors"
+
 	"github.com/Azure/azure-container-networking/nmagent/internal"
 )
 
@@ -72,7 +74,7 @@ type PutNetworkContainerRequest struct {
 func (p PutNetworkContainerRequest) Body() (io.Reader, error) {
 	body, err := json.Marshal(p)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling PutNetworkContainerRequest: %w", err)
+		return nil, errors.Wrap(err, "marshaling PutNetworkContainerRequest")
 	}
 
 	return bytes.NewReader(body), nil
@@ -116,7 +118,7 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 	var raw string
 	err := json.Unmarshal(in, &raw)
 	if err != nil {
-		return fmt.Errorf("decoding policy: %w", err)
+		return errors.Wrap(err, "decoding policy")
 	}
 
 	parts := strings.Split(raw, ",")
