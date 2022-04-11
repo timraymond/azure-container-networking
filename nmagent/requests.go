@@ -40,16 +40,16 @@ type PutNetworkContainerRequest struct {
 	VNetID string `json:"virtualNetworkID"`   // the id of the customer's vnet
 
 	// Version is the new network container version
-	Version uint64 `validate:"presence" json:"version"`
+	Version uint64 `json:"version"`
 
 	// SubnetName is the name of the delegated subnet. This is used to
 	// authenticate the request. The list of ipv4addresses must be contained in
 	// the subnet's prefix.
-	SubnetName string `validate:"presence" json:"subnetName"`
+	SubnetName string `json:"subnetName"`
 
 	// IPv4 addresses in the customer virtual network that will be assigned to
 	// the interface.
-	IPv4Addrs []string `validate:"presence" json:"ipV4Addresses"`
+	IPv4Addrs []string `json:"ipV4Addresses"`
 
 	Policies []Policy `json:"policies"` // policies applied to the network container
 
@@ -58,7 +58,7 @@ type PutNetworkContainerRequest struct {
 	VlanID int `json:"vlanId"`
 
 	// VirtualNetworkID is the ID of the customer's virtual network
-	VirtualNetworkID string `validate:"presence" json:"virtualNetworkId"`
+	VirtualNetworkID string `json:"virtualNetworkId"`
 
 	// AuthenticationToken is the base64 security token for the subnet containing
 	// the Network Container addresses
@@ -94,7 +94,28 @@ func (p PutNetworkContainerRequest) Path() string {
 // Validate ensures that all of the required parameters of the request have
 // been filled out properly prior to submission to NMAgent
 func (p PutNetworkContainerRequest) Validate() error {
-	return internal.Validate(p)
+	err := internal.ValidationError{}
+
+	if p.Version == 0 {
+		err.MissingFields = append(err.MissingFields, "Version")
+	}
+
+	if p.SubnetName == "" {
+		err.MissingFields = append(err.MissingFields, "SubnetName")
+	}
+
+	if len(p.IPv4Addrs) == 0 {
+		err.MissingFields = append(err.MissingFields, "IPv4Addrs")
+	}
+
+	if p.VirtualNetworkID == "" {
+		err.MissingFields = append(err.MissingFields, "VirtualNetworkID")
+	}
+
+	if err.IsEmpty() {
+		return nil
+	}
+	return err
 }
 
 type Policy struct {
@@ -157,7 +178,16 @@ func (j JoinNetworkRequest) Method() string {
 
 // Validate ensures that the provided parameters of the request are valid
 func (j JoinNetworkRequest) Validate() error {
-	return internal.Validate(j)
+	err := internal.ValidationError{}
+
+	if j.NetworkID == "" {
+		err.MissingFields = append(err.MissingFields, "NetworkID")
+	}
+
+	if err.IsEmpty() {
+		return nil
+	}
+	return err
 }
 
 var _ Request = DeleteContainerRequest{}
@@ -165,12 +195,12 @@ var _ Request = DeleteContainerRequest{}
 // DeleteContainerRequest represents all information necessary to request that
 // NMAgent delete a particular network container
 type DeleteContainerRequest struct {
-	NCID string `validate:"presence" json:"-"` // the Network Container ID
+	NCID string `json:"-"` // the Network Container ID
 
 	// PrimaryAddress is the primary customer address of the interface in the
 	// management VNET
-	PrimaryAddress      string `validate:"presence" json:"-"`
-	AuthenticationToken string `validate:"presence" json:"-"`
+	PrimaryAddress      string `json:"-"`
+	AuthenticationToken string `json:"-"`
 }
 
 // Path returns the path for submitting a DeleteContainerRequest with
@@ -193,7 +223,24 @@ func (d DeleteContainerRequest) Method() string {
 // Validate ensures that the DeleteContainerRequest has the correct information
 // to submit the request
 func (d DeleteContainerRequest) Validate() error {
-	return internal.Validate(d)
+	err := internal.ValidationError{}
+
+	if d.NCID == "" {
+		err.MissingFields = append(err.MissingFields, "NCID")
+	}
+
+	if d.PrimaryAddress == "" {
+		err.MissingFields = append(err.MissingFields, "PrimaryAddress")
+	}
+
+	if d.AuthenticationToken == "" {
+		err.MissingFields = append(err.MissingFields, "AuthenticationToken")
+	}
+
+	if err.IsEmpty() {
+		return nil
+	}
+	return err
 }
 
 var _ Request = GetNetworkConfigRequest{}
@@ -223,5 +270,14 @@ func (g GetNetworkConfigRequest) Method() string {
 
 // Validate ensures that the request is complete and the parameters are correct
 func (g GetNetworkConfigRequest) Validate() error {
-	return internal.Validate(g)
+	err := internal.ValidationError{}
+
+	if g.VNetID == "" {
+		err.MissingFields = append(err.MissingFields, "VNetID")
+	}
+
+	if err.IsEmpty() {
+		return nil
+	}
+	return err
 }
