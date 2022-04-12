@@ -62,7 +62,7 @@ func TestWireserverTransportPathTransform(t *testing.T) {
 							got = r.URL.Path
 							rr := httptest.NewRecorder()
 							rr.WriteHeader(http.StatusOK)
-							rr.Write([]byte(`{"httpStatusCode": "200"}`))
+							_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 							return rr.Result(), nil
 						},
 					},
@@ -71,15 +71,17 @@ func TestWireserverTransportPathTransform(t *testing.T) {
 
 			// execute
 
-			req, err := http.NewRequest(test.method, test.sub, nil)
+			//nolint:noctx // just a test
+			req, err := http.NewRequest(test.method, test.sub, http.NoBody)
 			if err != nil {
 				t.Fatal("error creating new request: err:", err)
 			}
 
-			_, err = client.Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				t.Fatal("unexpected error submitting request: err:", err)
 			}
+			defer resp.Body.Close()
 
 			// assert
 			if got != test.exp {
@@ -147,7 +149,8 @@ func TestWireserverTransportStatusTransform(t *testing.T) {
 
 			// execute
 
-			req, err := http.NewRequest(http.MethodGet, "/test/path", nil)
+			// nolint:noctx // just a test
+			req, err := http.NewRequest(http.MethodGet, "/test/path", http.NoBody)
 			if err != nil {
 				t.Fatal("error creating new request: err:", err)
 			}
@@ -188,7 +191,7 @@ func TestWireserverTransportPutPost(t *testing.T) {
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.Method
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 					rr.WriteHeader(http.StatusOK)
 					return rr.Result(), nil
 				},
@@ -196,15 +199,16 @@ func TestWireserverTransportPutPost(t *testing.T) {
 		},
 	}
 
-	req, err := http.NewRequest(http.MethodPut, "/test/path", nil)
+	req, err := http.NewRequest(http.MethodPut, "/test/path", http.NoBody)
 	if err != nil {
 		t.Fatal("unexpected error creating http request: err:", err)
 	}
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal("error submitting request: err:", err)
 	}
+	defer resp.Body.Close()
 
 	exp := http.MethodPost
 	if got != exp {
@@ -223,7 +227,7 @@ func TestWireserverTransportPostBody(t *testing.T) {
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					bodyIsNil = req.Body == nil
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 					rr.WriteHeader(http.StatusOK)
 					return rr.Result(), nil
 				},
@@ -231,31 +235,34 @@ func TestWireserverTransportPostBody(t *testing.T) {
 		},
 	}
 
-	// PUT
-	req, err := http.NewRequest(http.MethodPut, "/test/path", nil)
+	// PUT request
+	req, err := http.NewRequest(http.MethodPut, "/test/path", http.NoBody)
 	if err != nil {
 		t.Fatal("unexpected error creating http request: err:", err)
 	}
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal("error submitting request: err:", err)
 	}
+	defer resp.Body.Close()
 
 	if bodyIsNil {
 		t.Error("downstream request body to wireserver was nil, but not expected to be")
 	}
 
-	// POST
-	req, err = http.NewRequest(http.MethodPost, "/test/path", nil)
+	// POST request
+	// nolint:noctx // just a test
+	req, err = http.NewRequest(http.MethodPost, "/test/path", http.NoBody)
 	if err != nil {
 		t.Fatal("unexpected error creating http request: err:", err)
 	}
 
-	_, err = client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		t.Fatal("error submitting request: err:", err)
 	}
+	defer resp.Body.Close()
 
 	if bodyIsNil {
 		t.Error("downstream request body to wireserver was nil, but not expected to be")
@@ -274,7 +281,7 @@ func TestWireserverTransportQuery(t *testing.T) {
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.URL.Path
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 					rr.WriteHeader(http.StatusOK)
 					return rr.Result(), nil
 				},
@@ -282,15 +289,17 @@ func TestWireserverTransportQuery(t *testing.T) {
 		},
 	}
 
-	req, err := http.NewRequest(http.MethodPut, "/test/path?api-version=1234&foo=bar", nil)
+	// nolint:noctx // just a test
+	req, err := http.NewRequest(http.MethodPut, "/test/path?api-version=1234&foo=bar", http.NoBody)
 	if err != nil {
 		t.Fatal("unexpected error creating http request: err:", err)
 	}
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal("error submitting request: err:", err)
 	}
+	defer resp.Body.Close()
 
 	exp := "/machine/plugins/?comp=nmagent&type=test/path/api-version/1234/foo/bar"
 	if got != exp {

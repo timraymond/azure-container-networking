@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,9 +13,10 @@ import (
 )
 
 const (
+	// nolint:gomnd // constantizing just obscures meaning here
 	_ int64 = 1 << (10 * iota)
 	kilobyte
-	megabyte
+	// megabyte
 )
 
 const (
@@ -26,6 +26,9 @@ const (
 	// the event that no Content-Length is provided. The responses are relatively
 	// small, so the smallest page size should be sufficient
 	DefaultBufferSize int64 = 4 * kilobyte
+
+	// errors
+	ErrNoStatusCode = Error("no httpStatusCode property returned in Wireserver response")
 )
 
 var _ http.RoundTripper = &WireserverTransport{}
@@ -42,13 +45,13 @@ func (w WireserverResponse) StatusCode() (int, error) {
 			return 0, pkgerrors.Wrap(err, "unmarshaling httpStatusCode from Wireserver")
 		}
 
-		if code, err := strconv.Atoi(statusStr); err != nil {
+		code, err := strconv.Atoi(statusStr)
+		if err != nil {
 			return code, pkgerrors.Wrap(err, "parsing http status code from wireserver")
-		} else {
-			return code, nil
 		}
+		return code, nil
 	}
-	return 0, fmt.Errorf("no httpStatusCode property returned in Wireserver response")
+	return 0, ErrNoStatusCode
 }
 
 // WireserverTransport is an http.RoundTripper that applies transformation
@@ -100,7 +103,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	// execute the request to the downstream transport
 	resp, err := w.Transport.RoundTrip(req)
 	if err != nil {
-		return nil, err
+		return nil, pkgerrors.Wrap(err, "executing request to wireserver")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -145,6 +148,8 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 		// unmodified
 		resp.Header.Set(HeaderContentType, http.DetectContentType(body))
 		resp.Body = io.NopCloser(bytes.NewReader(body))
+
+		// nolint:nilerr // we effectively "fix" this error because it's expected
 		return resp, nil
 	}
 

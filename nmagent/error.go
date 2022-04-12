@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	pkgerrors "github.com/pkg/errors"
-
 	"github.com/Azure/azure-container-networking/nmagent/internal"
+	pkgerrors "github.com/pkg/errors"
 )
 
 // ContentError is encountered when an unexpected content type is obtained from

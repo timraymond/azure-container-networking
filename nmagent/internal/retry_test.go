@@ -34,7 +34,6 @@ func TestBackoffRetry(t *testing.T) {
 		}
 		return nil
 	})
-
 	if err != nil {
 		t.Fatal("unexpected error: err:", err)
 	}
@@ -83,7 +82,7 @@ func TestBackoffRetryUnretriableError(t *testing.T) {
 	}
 
 	err := rt.Do(context.Background(), func() error {
-		return errors.New("boom")
+		return errors.New("boom") // nolint:goerr113 // it's just a test
 	})
 
 	if err == nil {

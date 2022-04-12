@@ -3,7 +3,6 @@ package internal
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"time"
 
@@ -12,6 +11,10 @@ import (
 
 const (
 	noDelay = 0 * time.Nanosecond
+)
+
+const (
+	ErrMaxAttempts = Error("maximum attempts reached")
 )
 
 // TemporaryError is an error that can indicate whether it may be resolved with
@@ -35,6 +38,7 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 
 	for {
 		if err := ctx.Err(); err != nil {
+			// nolint:wrapcheck // no meaningful information can be added to this error
 			return err
 		}
 
@@ -43,7 +47,7 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 			// check to see if it's temporary
 			var tempErr TemporaryError
 			if ok := errors.As(err, &tempErr); ok && tempErr.Temporary() {
-				delay, err := cooldown()
+				delay, err := cooldown() // nolint:govet // the shadow is intentional
 				if err != nil {
 					return pkgerrors.Wrap(err, "sleeping during retry")
 				}
@@ -75,7 +79,7 @@ func Max(limit int, factory CooldownFactory) CooldownFactory {
 		count := 0
 		return func() (time.Duration, error) {
 			if count >= limit {
-				return noDelay, fmt.Errorf("maximum attempts reached (%d)", limit)
+				return noDelay, ErrMaxAttempts
 			}
 
 			delay, err := cooldown()

@@ -63,6 +63,6 @@ func ExampleMax() {
 		// 10ms
 		// 10ms
 		// 10ms
-		// error cooling down: maximum attempts reached (4)
+		// error cooling down: maximum attempts reached
 	}
 }

@@ -8,10 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Azure/azure-container-networking/nmagent"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
-
-	"github.com/Azure/azure-container-networking/nmagent"
 )
 
 var _ http.RoundTripper = &TestTripper{}
@@ -68,7 +67,7 @@ func TestNMAgentClientJoinNetwork(t *testing.T) {
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.URL.Path
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(fmt.Sprintf(`{"httpStatusCode":"%d"}`, test.respStatus)))
+					_, _ = fmt.Fprintf(rr, `{"httpStatusCode":"%d"}`, test.respStatus)
 					rr.WriteHeader(http.StatusOK)
 					return rr.Result(), nil
 				},
@@ -117,7 +116,7 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 			} else {
 				rr.WriteHeader(http.StatusOK)
 			}
-			rr.Write([]byte(`{"httpStatusCode": "200"}`))
+			_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 			return rr.Result(), nil
 		},
 	})
@@ -248,7 +247,7 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 			}
 
 			// we still need a fake response
-			rr.Write([]byte(`{"httpStatusCode": "200"}`))
+			_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 			return rr.Result(), nil
 		},
 	})
@@ -276,13 +275,13 @@ func TestNMAgentGetNetworkConfigRetry(t *testing.T) {
 func TestNMAgentPutNetworkContainer(t *testing.T) {
 	putNCTests := []struct {
 		name       string
-		req        nmagent.PutNetworkContainerRequest
+		req        *nmagent.PutNetworkContainerRequest
 		shouldCall bool
 		shouldErr  bool
 	}{
 		{
 			"happy path",
-			nmagent.PutNetworkContainerRequest{
+			&nmagent.PutNetworkContainerRequest{
 				ID:         "350f1e3c-4283-4f51-83a1-c44253962ef1",
 				Version:    uint64(12345),
 				VNetID:     "be3a33e-61e3-42c7-bd23-6b949f57bd36",
@@ -317,7 +316,7 @@ func TestNMAgentPutNetworkContainer(t *testing.T) {
 			client := nmagent.NewTestClient(&TestTripper{
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 					rr.WriteHeader(http.StatusOK)
 					didCall = true
 					return rr.Result(), nil
@@ -371,7 +370,7 @@ func TestNMAgentDeleteNC(t *testing.T) {
 				RoundTripF: func(req *http.Request) (*http.Response, error) {
 					got = req.URL.Path
 					rr := httptest.NewRecorder()
-					rr.Write([]byte(`{"httpStatusCode": "200"}`))
+					_, _ = rr.WriteString(`{"httpStatusCode": "200"}`)
 					return rr.Result(), nil
 				},
 			})

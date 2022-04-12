@@ -9,13 +9,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/pkg/errors"
-
 	"github.com/Azure/azure-container-networking/nmagent/internal"
+	"github.com/pkg/errors"
 )
 
 // Request represents an abstracted HTTP request, capable of validating itself,
-// producting a valid Path, Body, and its Method
+// producing a valid Path, Body, and its Method.
 type Request interface {
 	// Validate should ensure that the request is valid to submit
 	Validate() error
@@ -31,7 +30,7 @@ type Request interface {
 	Method() string
 }
 
-var _ Request = PutNetworkContainerRequest{}
+var _ Request = &PutNetworkContainerRequest{}
 
 // PutNetworkContainerRequest is a collection of parameters necessary to create
 // a new network container
@@ -71,7 +70,7 @@ type PutNetworkContainerRequest struct {
 
 // Body marshals the JSON fields of the request and produces an Reader intended
 // for use with an HTTP request
-func (p PutNetworkContainerRequest) Body() (io.Reader, error) {
+func (p *PutNetworkContainerRequest) Body() (io.Reader, error) {
 	body, err := json.Marshal(p)
 	if err != nil {
 		return nil, errors.Wrap(err, "marshaling PutNetworkContainerRequest")
@@ -81,19 +80,19 @@ func (p PutNetworkContainerRequest) Body() (io.Reader, error) {
 }
 
 // Method returns the HTTP method for this request type
-func (p PutNetworkContainerRequest) Method() string {
+func (p *PutNetworkContainerRequest) Method() string {
 	return http.MethodPost
 }
 
 // Path returns the URL path necessary to submit this PutNetworkContainerRequest
-func (p PutNetworkContainerRequest) Path() string {
+func (p *PutNetworkContainerRequest) Path() string {
 	const PutNCRequestPath string = "/NetworkManagement/interfaces/%s/networkContainers/%s/authenticationToken/%s/api-version/1"
 	return fmt.Sprintf(PutNCRequestPath, p.PrimaryAddress, p.ID, p.AuthenticationToken)
 }
 
 // Validate ensures that all of the required parameters of the request have
 // been filled out properly prior to submission to NMAgent
-func (p PutNetworkContainerRequest) Validate() error {
+func (p *PutNetworkContainerRequest) Validate() error {
 	err := internal.ValidationError{}
 
 	if p.Version == 0 {
@@ -131,11 +130,14 @@ func (p Policy) MarshalJSON() ([]byte, error) {
 	out.WriteString(p.Type)
 
 	outStr := out.String()
+	// nolint:wrapcheck // wrapping this error provides no useful information
 	return json.Marshal(outStr)
 }
 
 // UnmarshalJSON decodes a JSON-encoded policy string
 func (p *Policy) UnmarshalJSON(in []byte) error {
+	const expectedNumParts = 2
+
 	var raw string
 	err := json.Unmarshal(in, &raw)
 	if err != nil {
@@ -143,8 +145,8 @@ func (p *Policy) UnmarshalJSON(in []byte) error {
 	}
 
 	parts := strings.Split(raw, ",")
-	if len(parts) != 2 {
-		return fmt.Errorf("policies must be two comma-separated values")
+	if len(parts) != expectedNumParts {
+		return errors.New("policies must be two comma-separated values")
 	}
 
 	p.ID = strings.TrimFunc(parts[0], unicode.IsSpace)

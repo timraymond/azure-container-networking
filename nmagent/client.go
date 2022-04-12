@@ -9,9 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/Azure/azure-container-networking/nmagent/internal"
+	"github.com/pkg/errors"
 )
 
 // NewClient returns an initialized Client using the provided configuration
@@ -30,6 +29,7 @@ func NewClient(c Config) (*Client, error) {
 		port:      c.Port,
 		enableTLS: c.UseTLS,
 		retrier: internal.Retrier{
+			// nolint:gomnd // the base parameter is explained in the function
 			Cooldown: internal.Exponential(1*time.Second, 2),
 		},
 	}
@@ -78,7 +78,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 	}
 
 	err = c.retrier.Do(ctx, func() error {
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpClient.Do(req) // nolint:govet // the shadow is intentional
 		if err != nil {
 			return errors.Wrap(err, "executing request")
 		}
@@ -90,7 +90,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 		return nil
 	})
 
-	return err
+	return err // nolint:wrapcheck // wrapping this just introduces noise
 }
 
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
@@ -106,7 +106,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 	}
 
 	err = c.retrier.Do(ctx, func() error {
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpClient.Do(req) // nolint:govet // the shadow is intentional
 		if err != nil {
 			return errors.Wrap(err, "executing http request to")
 		}
@@ -129,12 +129,12 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 		return nil
 	})
 
-	return out, err
+	return out, err // nolint:wrapcheck // wrapping just introduces noise here
 }
 
 // PutNetworkContainer applies a Network Container goal state and publishes it
 // to PubSub
-func (c *Client) PutNetworkContainer(ctx context.Context, pncr PutNetworkContainerRequest) error {
+func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContainerRequest) error {
 	requestStart := time.Now()
 
 	req, err := c.buildRequest(ctx, pncr)
@@ -198,6 +198,7 @@ func (c *Client) buildRequest(ctx context.Context, req Request) (*http.Request, 
 		return nil, errors.Wrap(err, "retrieving request body")
 	}
 
+	// nolint:wrapcheck // wrapping doesn't provide useful information
 	return http.NewRequestWithContext(ctx, req.Method(), fullURL.String(), body)
 }
 
