@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-container-networking/nmagent"
 )
@@ -33,35 +32,9 @@ func TestErrorTemp(t *testing.T) {
 			true,
 		},
 		{
-			"unauthorized temporary",
-			nmagent.Error{
-				Runtime: 30 * time.Second,
-				Limit:   1 * time.Minute,
-				Code:    http.StatusUnauthorized,
-			},
-			true,
-		},
-		{
-			"unauthorized permanent",
-			nmagent.Error{
-				Runtime: 2 * time.Minute,
-				Limit:   1 * time.Minute,
-				Code:    http.StatusUnauthorized,
-			},
-			false,
-		},
-		{
-			"unauthorized zero values",
+			"unauthorized",
 			nmagent.Error{
 				Code: http.StatusUnauthorized,
-			},
-			false,
-		},
-		{
-			"unauthorized zero limit",
-			nmagent.Error{
-				Runtime: 2 * time.Minute,
-				Code:    http.StatusUnauthorized,
 			},
 			false,
 		},

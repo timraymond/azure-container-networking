@@ -70,8 +70,6 @@ func WithUnauthorizedGracePeriod(grace time.Duration) Option {
 
 // JoinNetwork joins a node to a customer's virtual network
 func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
-	requestStart := time.Now()
-
 	req, err := c.buildRequest(ctx, jnr)
 	if err != nil {
 		return errors.Wrap(err, "building request")
@@ -85,7 +83,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return c.error(time.Since(requestStart), resp.StatusCode)
+			return Error{resp.StatusCode}
 		}
 		return nil
 	})
@@ -96,8 +94,6 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
 // network. Only subnets which have been delegated will be returned
 func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkConfigRequest) (VirtualNetwork, error) {
-	requestStart := time.Now()
-
 	var out VirtualNetwork
 
 	req, err := c.buildRequest(ctx, gncr)
@@ -113,7 +109,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return c.error(time.Since(requestStart), resp.StatusCode)
+			return Error{resp.StatusCode}
 		}
 
 		ct := resp.Header.Get(internal.HeaderContentType)
@@ -135,8 +131,6 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 // PutNetworkContainer applies a Network Container goal state and publishes it
 // to PubSub
 func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContainerRequest) error {
-	requestStart := time.Now()
-
 	req, err := c.buildRequest(ctx, pncr)
 	if err != nil {
 		return errors.Wrap(err, "building request")
@@ -149,7 +143,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContai
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return c.error(time.Since(requestStart), resp.StatusCode)
+		return Error{resp.StatusCode}
 	}
 	return nil
 }
@@ -157,8 +151,6 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContai
 // DeleteNetworkContainer removes a Network Container, its associated IP
 // addresses, and network policies from an interface
 func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainerRequest) error {
-	requestStart := time.Now()
-
 	req, err := c.buildRequest(ctx, dcr)
 	if err != nil {
 		return errors.Wrap(err, "building request")
@@ -171,7 +163,7 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainer
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return c.error(time.Since(requestStart), resp.StatusCode)
+		return Error{resp.StatusCode}
 	}
 
 	return nil
@@ -207,14 +199,4 @@ func (c *Client) scheme() string {
 		return "https"
 	}
 	return "http"
-}
-
-// error constructs a NMAgent error while providing some information configured
-// at instantiation
-func (c *Client) error(runtime time.Duration, code int) error {
-	return Error{
-		Runtime: runtime,
-		Limit:   c.unauthorizedGracePeriod,
-		Code:    code,
-	}
 }
