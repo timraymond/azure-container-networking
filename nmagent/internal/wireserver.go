@@ -29,7 +29,58 @@ const (
 
 	// errors
 	ErrNoStatusCode = Error("no httpStatusCode property returned in Wireserver response")
+
+	// Headers
+	HeaderErrorSource = "X-Error-Source"
 )
+
+// ErrorSource is an indicator used as a header value to indicate the source of
+// non-2xx status codes
+type ErrorSource int
+
+const (
+	ErrorSourceInvalid ErrorSource = iota
+	ErrorSourceWireserver
+	ErrorSourceNMAgent
+)
+
+// String produces the string equivalent for the ErrorSource type
+func (e ErrorSource) String() string {
+	switch e {
+	case ErrorSourceWireserver:
+		return "wireserver"
+	case ErrorSourceNMAgent:
+		return "nmagent"
+	case ErrorSourceInvalid:
+		return ""
+	default:
+		return ""
+	}
+}
+
+// NewErrorSource produces an ErrorSource value from the provided string. Any
+// unrecognized values will become the invalid type
+func NewErrorSource(es string) ErrorSource {
+	switch es {
+	case "wireserver":
+		return ErrorSourceWireserver
+	case "nmagent":
+		return ErrorSourceNMAgent
+	default:
+		return ErrorSourceInvalid
+	}
+}
+
+// GetErrorSource retrieves the error source from the provided HTTP headers
+func GetErrorSource(head http.Header) ErrorSource {
+	return NewErrorSource(head.Get(HeaderErrorSource))
+}
+
+// SetErrorSource sets the header value necessary for communicating the error
+// source
+func SetErrorSource(head *http.Header, es ErrorSource) {
+	head.Set(HeaderErrorSource, es.String())
+}
 
 var _ http.RoundTripper = &WireserverTransport{}
 
@@ -107,7 +158,9 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// something happened at Wireserver, so we should just hand this back up
+		// something happened at Wireserver, so set a header implicating Wireserver
+		// and hand the response back up
+		SetErrorSource(&resp.Header, ErrorSourceWireserver)
 		return resp, nil
 	}
 
@@ -161,6 +214,10 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	if err != nil {
 		return resp, pkgerrors.Wrap(err, "retrieving status code from wireserver response")
 	}
+
+	// add the advisory header stating that any HTTP Status from here out is from
+	// NMAgent
+	SetErrorSource(&resp.Header, ErrorSourceNMAgent)
 
 	resp.StatusCode = realCode
 

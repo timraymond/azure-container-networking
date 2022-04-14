@@ -49,13 +49,22 @@ func NewContentError(contentType string, in io.Reader, limit int64) error {
 // Error is a aberrent condition encountered when interacting with the NMAgent
 // API
 type Error struct {
-	Code int // the HTTP status code received
+	Code   int    // the HTTP status code received
+	Source string // the component responsible for producing the error
 }
 
 // Error constructs a string representation of this error in accordance with
 // the error interface
 func (e Error) Error() string {
-	return fmt.Sprintf("nmagent: http status %d: %s", e.Code, e.Message())
+	return fmt.Sprintf("nmagent: %s: http status %d: %s", e.source(), e.Code, e.Message())
+}
+
+func (e Error) source() string {
+	source := "not provided"
+	if e.Source != "" {
+		source = e.Source
+	}
+	return fmt.Sprintf("source: %s", source)
 }
 
 // Message interprets the HTTP Status code from NMAgent and returns the
@@ -69,7 +78,7 @@ func (e Error) Message() string {
 	case http.StatusInternalServerError:
 		return "error occurred during nmagent's request processing"
 	default:
-		return "undocumented nmagent error"
+		return "undocumented error"
 	}
 }
 

@@ -83,7 +83,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return Error{resp.StatusCode}
+			return c.error(resp.StatusCode, resp.Header)
 		}
 		return nil
 	})
@@ -109,7 +109,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return Error{resp.StatusCode}
+			return c.error(resp.StatusCode, resp.Header)
 		}
 
 		ct := resp.Header.Get(internal.HeaderContentType)
@@ -143,7 +143,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContai
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return Error{resp.StatusCode}
+		return c.error(resp.StatusCode, resp.Header)
 	}
 	return nil
 }
@@ -163,10 +163,19 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainer
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return Error{resp.StatusCode}
+		return c.error(resp.StatusCode, resp.Header)
 	}
 
 	return nil
+}
+
+func (c *Client) error(code int, headers http.Header) error {
+	return Error{
+		Code: code,
+		// this is a little strange, but the conversion below is to avoid forcing
+		// consumers to depend on an internal type (which they can't anyway)
+		Source: internal.GetErrorSource(headers).String(),
+	}
 }
 
 func (c *Client) hostPort() string {
