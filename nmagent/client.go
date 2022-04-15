@@ -3,6 +3,7 @@ package nmagent
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -71,7 +72,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return c.error(resp.StatusCode, resp.Header)
+			return c.error(resp.StatusCode, resp.Header, resp.Body)
 		}
 		return nil
 	})
@@ -97,7 +98,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return c.error(resp.StatusCode, resp.Header)
+			return c.error(resp.StatusCode, resp.Header, resp.Body)
 		}
 
 		ct := resp.Header.Get(internal.HeaderContentType)
@@ -131,7 +132,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContai
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return c.error(resp.StatusCode, resp.Header)
+		return c.error(resp.StatusCode, resp.Header, resp.Body)
 	}
 	return nil
 }
@@ -151,18 +152,26 @@ func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainer
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return c.error(resp.StatusCode, resp.Header)
+		return c.error(resp.StatusCode, resp.Header, resp.Body)
 	}
 
 	return nil
 }
 
-func (c *Client) error(code int, headers http.Header) error {
+func (c *Client) error(code int, headers http.Header, body io.ReadCloser) error {
+	// read the entire body
+	defer body.Close()
+
+	// nolint:errcheck // make a best effort to return whatever information we can
+	// returning an error here without the code and source would
+	// be less helpful
+	bodyContent, _ := io.ReadAll(body)
 	return Error{
 		Code: code,
 		// this is a little strange, but the conversion below is to avoid forcing
 		// consumers to depend on an internal type (which they can't anyway)
 		Source: internal.GetErrorSource(headers).String(),
+		Body:   bodyContent,
 	}
 }
 

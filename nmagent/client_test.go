@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-container-networking/nmagent"
@@ -139,6 +140,48 @@ func TestNMAgentClientJoinNetworkRetry(t *testing.T) {
 
 	if invocations != exp {
 		t.Error("client did not make the expected number of API calls: got:", invocations, "exp:", exp)
+	}
+}
+
+func TestWSError(t *testing.T) {
+	const wsError string = `
+<?xml version="1.0" encoding="utf-8"?>
+<Error xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://w
+ww.w3.org/2001/XMLSchema">
+<Code>InternalError</Code>
+<Message>The server encountered an internal error. Please retry the request.
+</Message>
+<Details></Details>
+</Error>
+`
+
+	client := nmagent.NewTestClient(&TestTripper{
+		RoundTripF: func(req *http.Request) (*http.Response, error) {
+			rr := httptest.NewRecorder()
+			rr.WriteHeader(http.StatusInternalServerError)
+			_, _ = rr.WriteString(wsError)
+			return rr.Result(), nil
+		},
+	})
+
+	req := nmagent.GetNetworkConfigRequest{
+		VNetID: "4815162342",
+	}
+	_, err := client.GetNetworkConfiguration(context.TODO(), req)
+
+	if err == nil {
+		t.Fatal("expected error to not be nil")
+	}
+
+	var cerr nmagent.Error
+	ok := errors.As(err, &cerr)
+	if !ok {
+		t.Fatal("error was not an nmagent.Error")
+	}
+
+	t.Log(cerr.Error())
+	if !strings.Contains(cerr.Error(), "InternalError") {
+		t.Error("error did not contain the error content from wireserver")
 	}
 }
 

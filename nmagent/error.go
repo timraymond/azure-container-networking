@@ -51,12 +51,13 @@ func NewContentError(contentType string, in io.Reader, limit int64) error {
 type Error struct {
 	Code   int    // the HTTP status code received
 	Source string // the component responsible for producing the error
+	Body   []byte // the body of the error returned
 }
 
 // Error constructs a string representation of this error in accordance with
 // the error interface
 func (e Error) Error() string {
-	return fmt.Sprintf("nmagent: %s: http status %d: %s", e.source(), e.Code, e.Message())
+	return fmt.Sprintf("nmagent: %s: http status %d: %s: body: %s", e.source(), e.Code, e.Message(), string(e.Body))
 }
 
 func (e Error) source() string {
