@@ -47,10 +47,6 @@ type Client struct {
 
 	enableTLS bool
 
-	// unauthorizedGracePeriod is the amount of time Unauthorized responses from
-	// NMAgent will be tolerated and retried
-	unauthorizedGracePeriod time.Duration
-
 	retrier interface {
 		Do(context.Context, func() error) error
 	}
@@ -59,14 +55,6 @@ type Client struct {
 // Option is a functional option for configuration optional behavior in the
 // client
 type Option func(*Client)
-
-// WithUnauthorizedGracePeriod is an option to treat Unauthorized (401)
-// responses from NMAgent as temporary errors for a configurable amount of time
-func WithUnauthorizedGracePeriod(grace time.Duration) Option {
-	return func(c *Client) {
-		c.unauthorizedGracePeriod = grace
-	}
-}
 
 // JoinNetwork joins a node to a customer's virtual network
 func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
