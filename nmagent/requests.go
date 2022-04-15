@@ -250,7 +250,7 @@ var _ Request = GetNetworkConfigRequest{}
 // GetNetworkConfigRequest is a collection of necessary information for
 // submitting a request for a customer's network configuration
 type GetNetworkConfigRequest struct {
-	VNetID string `validate:"presence" json:"-"` // the customer's virtual network ID
+	VNetID string `json:"-"` // the customer's virtual network ID
 }
 
 // Path produces a URL path used to submit a request
