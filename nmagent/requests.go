@@ -56,6 +56,7 @@ type PutNetworkContainerRequest struct {
 	// addresses. "0" is considered a default value by the API.
 	VlanID int `json:"vlanId"`
 
+	GREKey uint16 `json:"greKey"`
 
 	// AuthenticationToken is the base64 security token for the subnet containing
 	// the Network Container addresses
