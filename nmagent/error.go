@@ -91,6 +91,11 @@ func (e Error) Temporary() bool {
 	return e.Code == http.StatusProcessing
 }
 
+// StatusCode returns the HTTP status associated with this error
+func (e Error) StatusCode() int {
+	return e.Code
+}
+
 // Unauthorized reports whether the error was produced as a result of
 // submitting the request from an interface without an OwningServiceInstanceId
 // property. In some cases, this can be a transient condition that could be
