@@ -343,7 +343,6 @@ func TestNMAgentPutNetworkContainer(t *testing.T) {
 				VlanID:              1234,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "0000000-0000-0000-0000-000000000000",
 			},
 			true,
 			false,

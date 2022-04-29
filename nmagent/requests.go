@@ -56,8 +56,6 @@ type PutNetworkContainerRequest struct {
 	// addresses. "0" is considered a default value by the API.
 	VlanID int `json:"vlanId"`
 
-	// VirtualNetworkID is the ID of the customer's virtual network
-	VirtualNetworkID string `json:"virtualNetworkId"`
 
 	// AuthenticationToken is the base64 security token for the subnet containing
 	// the Network Container addresses
@@ -107,8 +105,8 @@ func (p *PutNetworkContainerRequest) Validate() error {
 		err.MissingFields = append(err.MissingFields, "IPv4Addrs")
 	}
 
-	if p.VirtualNetworkID == "" {
-		err.MissingFields = append(err.MissingFields, "VirtualNetworkID")
+	if p.VNetID == "" {
+		err.MissingFields = append(err.MissingFields, "VNetID")
 	}
 
 	if err.IsEmpty() {

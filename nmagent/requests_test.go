@@ -245,7 +245,6 @@ func TestPutNetworkContainerRequestPath(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "33333333-3333-3333-3333-333333333333",
 			},
 			"/NetworkManagement/interfaces/10.0.0.1/networkContainers/00000000-0000-0000-0000-000000000000/authenticationToken/swordfish/api-version/1",
 		},
@@ -294,7 +293,6 @@ func TestPutNetworkContainerRequestValidate(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "33333333-3333-3333-3333-333333333333",
 			},
 			true,
 		},
@@ -315,7 +313,6 @@ func TestPutNetworkContainerRequestValidate(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "33333333-3333-3333-3333-333333333333",
 			},
 			false,
 		},
@@ -338,7 +335,6 @@ func TestPutNetworkContainerRequestValidate(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "33333333-3333-3333-3333-333333333333",
 			},
 			false,
 		},
@@ -361,15 +357,14 @@ func TestPutNetworkContainerRequestValidate(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "33333333-3333-3333-3333-333333333333",
 			},
 			false,
 		},
 		{
-			"missing version",
+			"missing vnet id",
 			nmagent.PutNetworkContainerRequest{
 				ID:         "00000000-0000-0000-0000-000000000000",
-				VNetID:     "11111111-1111-1111-1111-111111111111",
+				VNetID:     "", // the important part
 				Version:    uint64(12345),
 				SubnetName: "foo",
 				IPv4Addrs: []string{
@@ -384,7 +379,6 @@ func TestPutNetworkContainerRequestValidate(t *testing.T) {
 				VlanID:              0,
 				AuthenticationToken: "swordfish",
 				PrimaryAddress:      "10.0.0.1",
-				VirtualNetworkID:    "", // the important part of the test
 			},
 			false,
 		},
