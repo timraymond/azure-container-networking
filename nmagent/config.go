@@ -2,7 +2,7 @@ package nmagent
 
 import "github.com/Azure/azure-container-networking/nmagent/internal"
 
-// Config is a configuration for an NMAgent Client
+// Config is a configuration for an NMAgent Client.
 type Config struct {
 	/////////////////////
 	// Required Config //
@@ -17,7 +17,7 @@ type Config struct {
 }
 
 // Validate reports whether this configuration is a valid configuration for a
-// client
+// client.
 func (c Config) Validate() error {
 	err := internal.ValidationError{}
 

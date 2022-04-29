@@ -11,7 +11,7 @@ import (
 )
 
 // ContentError is encountered when an unexpected content type is obtained from
-// NMAgent
+// NMAgent.
 type ContentError struct {
 	Type string // the mime type of the content received
 	Body []byte // the received body
@@ -47,7 +47,7 @@ func NewContentError(contentType string, in io.Reader, limit int64) error {
 }
 
 // Error is a aberrent condition encountered when interacting with the NMAgent
-// API
+// API.
 type Error struct {
 	Code   int    // the HTTP status code received
 	Source string // the component responsible for producing the error
@@ -55,7 +55,7 @@ type Error struct {
 }
 
 // Error constructs a string representation of this error in accordance with
-// the error interface
+// the error interface.
 func (e Error) Error() string {
 	return fmt.Sprintf("nmagent: %s: http status %d: %s: body: %s", e.source(), e.Code, e.Message(), string(e.Body))
 }
@@ -69,7 +69,7 @@ func (e Error) source() string {
 }
 
 // Message interprets the HTTP Status code from NMAgent and returns the
-// corresponding explanation from the documentation
+// corresponding explanation from the documentation.
 func (e Error) Message() string {
 	switch e.Code {
 	case http.StatusProcessing:
@@ -84,14 +84,14 @@ func (e Error) Message() string {
 }
 
 // Temporary reports whether the error encountered from NMAgent should be
-// considered temporary, and thus retriable
+// considered temporary, and thus retriable.
 func (e Error) Temporary() bool {
 	// NMAgent will return a 102 (Processing) if the request is taking time to
 	// complete. These should be attempted again.
 	return e.Code == http.StatusProcessing
 }
 
-// StatusCode returns the HTTP status associated with this error
+// StatusCode returns the HTTP status associated with this error.
 func (e Error) StatusCode() int {
 	return e.Code
 }

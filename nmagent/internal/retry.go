@@ -18,21 +18,21 @@ const (
 )
 
 // TemporaryError is an error that can indicate whether it may be resolved with
-// another attempt
+// another attempt.
 type TemporaryError interface {
 	error
 	Temporary() bool
 }
 
 // Retrier is a construct for attempting some operation multiple times with a
-// configurable backoff strategy
+// configurable backoff strategy.
 type Retrier struct {
 	Cooldown CooldownFactory
 }
 
 // Do repeatedly invokes the provided run function while the context remains
 // active. It waits in between invocations of the provided functions by
-// delegating to the provided Cooldown function
+// delegating to the provided Cooldown function.
 func (r Retrier) Do(ctx context.Context, run func() error) error {
 	cooldown := r.Cooldown()
 
@@ -44,7 +44,7 @@ func (r Retrier) Do(ctx context.Context, run func() error) error {
 
 		err := run()
 		if err != nil {
-			// check to see if it's temporary
+			// check to see if it's temporary.
 			var tempErr TemporaryError
 			if ok := errors.As(err, &tempErr); ok && tempErr.Temporary() {
 				delay, err := cooldown() // nolint:govet // the shadow is intentional
@@ -72,7 +72,7 @@ type CooldownFunc func() (time.Duration, error)
 type CooldownFactory func() CooldownFunc
 
 // Max provides a fixed limit for the number of times a subordinate cooldown
-// function can be invoked
+// function can be invoked.
 func Max(limit int, factory CooldownFactory) CooldownFactory {
 	return func() CooldownFunc {
 		cooldown := factory()
@@ -93,7 +93,7 @@ func Max(limit int, factory CooldownFactory) CooldownFactory {
 }
 
 // AsFastAsPossible is a Cooldown strategy that does not block, allowing retry
-// logic to proceed as fast as possible. This is particularly useful in tests
+// logic to proceed as fast as possible. This is particularly useful in tests.
 func AsFastAsPossible() CooldownFactory {
 	return func() CooldownFunc {
 		return func() (time.Duration, error) {
@@ -102,7 +102,7 @@ func AsFastAsPossible() CooldownFactory {
 	}
 }
 
-// Exponential provides an exponential increase the the base interval provided
+// Exponential provides an exponential increase the the base interval provided.
 func Exponential(interval time.Duration, base int) CooldownFactory {
 	return func() CooldownFunc {
 		count := 0
@@ -115,7 +115,7 @@ func Exponential(interval time.Duration, base int) CooldownFactory {
 	}
 }
 
-// Fixed produced the same delay value upon each invocation
+// Fixed produced the same delay value upon each invocation.
 func Fixed(delay time.Duration) CooldownFactory {
 	return func() CooldownFunc {
 		return func() (time.Duration, error) {

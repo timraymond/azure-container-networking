@@ -14,7 +14,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// NewClient returns an initialized Client using the provided configuration
+// NewClient returns an initialized Client using the provided configuration.
 func NewClient(c Config) (*Client, error) {
 	if err := c.Validate(); err != nil {
 		return nil, errors.Wrap(err, "validating config")
@@ -38,7 +38,7 @@ func NewClient(c Config) (*Client, error) {
 	return client, nil
 }
 
-// Client is an agent for exchanging information with NMAgent
+// Client is an agent for exchanging information with NMAgent.
 type Client struct {
 	httpClient *http.Client
 
@@ -54,10 +54,10 @@ type Client struct {
 }
 
 // Option is a functional option for configuration optional behavior in the
-// client
+// client.
 type Option func(*Client)
 
-// JoinNetwork joins a node to a customer's virtual network
+// JoinNetwork joins a node to a customer's virtual network.
 func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
 	req, err := c.buildRequest(ctx, jnr)
 	if err != nil {
@@ -81,7 +81,7 @@ func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error 
 }
 
 // GetNetworkConfiguration retrieves the configuration of a customer's virtual
-// network. Only subnets which have been delegated will be returned
+// network. Only subnets which have been delegated will be returned.
 func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkConfigRequest) (VirtualNetwork, error) {
 	var out VirtualNetwork
 
@@ -118,7 +118,7 @@ func (c *Client) GetNetworkConfiguration(ctx context.Context, gncr GetNetworkCon
 }
 
 // PutNetworkContainer applies a Network Container goal state and publishes it
-// to PubSub
+// to PubSub.
 func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContainerRequest) error {
 	req, err := c.buildRequest(ctx, pncr)
 	if err != nil {
@@ -138,7 +138,7 @@ func (c *Client) PutNetworkContainer(ctx context.Context, pncr *PutNetworkContai
 }
 
 // DeleteNetworkContainer removes a Network Container, its associated IP
-// addresses, and network policies from an interface
+// addresses, and network policies from an interface.
 func (c *Client) DeleteNetworkContainer(ctx context.Context, dcr DeleteContainerRequest) error {
 	req, err := c.buildRequest(ctx, dcr)
 	if err != nil {

@@ -33,10 +33,10 @@ const (
 
 var _ http.RoundTripper = &WireserverTransport{}
 
-// WireserverResponse represents a raw response from Wireserver
+// WireserverResponse represents a raw response from Wireserver.
 type WireserverResponse map[string]json.RawMessage
 
-// StatusCode extracts the embedded HTTP status code from the response from Wireserver
+// StatusCode extracts the embedded HTTP status code from the response from Wireserver.
 func (w WireserverResponse) StatusCode() (int, error) {
 	if status, ok := w["httpStatusCode"]; ok {
 		var statusStr string
@@ -55,14 +55,14 @@ func (w WireserverResponse) StatusCode() (int, error) {
 }
 
 // WireserverTransport is an http.RoundTripper that applies transformation
-// rules to inbound requests necessary to make them compatible with Wireserver
+// rules to inbound requests necessary to make them compatible with Wireserver.
 type WireserverTransport struct {
 	Transport http.RoundTripper
 }
 
 // RoundTrip executes arbitrary HTTP requests against Wireserver while applying
 // the necessary transformation rules to make such requests acceptable to
-// Wireserver
+// Wireserver.
 func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, error) {
 	// RoundTrippers are not allowed to modify the request, so we clone it here.
 	// We need to extract the context from the request first since this is _not_
@@ -142,7 +142,7 @@ func (w *WireserverTransport) RoundTrip(inReq *http.Request) (*http.Response, er
 	resp.ContentLength = int64(numRead)
 
 	// it's unclear whether Wireserver sets Content-Type appropriately, so we
-	// attempt to decode it first and surface it otherwise
+	// attempt to decode it first and surface it otherwise.
 	var wsResp WireserverResponse
 	err = json.Unmarshal(body, &wsResp)
 	if err != nil {

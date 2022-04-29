@@ -11,7 +11,7 @@ func (e Error) Error() string {
 }
 
 // ErrorSource is an indicator used as a header value to indicate the source of
-// non-2xx status codes
+// non-2xx status codes.
 type ErrorSource int
 
 const (
@@ -20,7 +20,7 @@ const (
 	ErrorSourceNMAgent
 )
 
-// String produces the string equivalent for the ErrorSource type
+// String produces the string equivalent for the ErrorSource type.
 func (e ErrorSource) String() string {
 	switch e {
 	case ErrorSourceWireserver:
@@ -35,7 +35,7 @@ func (e ErrorSource) String() string {
 }
 
 // NewErrorSource produces an ErrorSource value from the provided string. Any
-// unrecognized values will become the invalid type
+// unrecognized values will become the invalid type.
 func NewErrorSource(es string) ErrorSource {
 	switch es {
 	case "wireserver":
@@ -51,13 +51,13 @@ const (
 	HeaderErrorSource = "X-Error-Source"
 )
 
-// GetErrorSource retrieves the error source from the provided HTTP headers
+// GetErrorSource retrieves the error source from the provided HTTP headers.
 func GetErrorSource(head http.Header) ErrorSource {
 	return NewErrorSource(head.Get(HeaderErrorSource))
 }
 
 // SetErrorSource sets the header value necessary for communicating the error
-// source
+// source.
 func SetErrorSource(head *http.Header, es ErrorSource) {
 	head.Set(HeaderErrorSource, es.String())
 }
