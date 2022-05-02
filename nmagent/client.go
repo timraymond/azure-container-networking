@@ -53,10 +53,6 @@ type Client struct {
 	}
 }
 
-// Option is a functional option for configuration optional behavior in the
-// client.
-type Option func(*Client)
-
 // JoinNetwork joins a node to a customer's virtual network.
 func (c *Client) JoinNetwork(ctx context.Context, jnr JoinNetworkRequest) error {
 	req, err := c.buildRequest(ctx, jnr)
