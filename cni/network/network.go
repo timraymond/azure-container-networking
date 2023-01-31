@@ -1007,7 +1007,11 @@ func (plugin *NetPlugin) Delete(args *cniSkel.CmdArgs) error {
 		addresses := []*net.IPNet{}
 		for i := range epInfo.IPAddresses {
 			addresses = append(addresses, &epInfo.IPAddresses[i])
-			logAndSendEvent(plugin, fmt.Sprintf("Release ip:%s", address.IP.String()))
+			logAndSendEvent(plugin, fmt.Sprintf("Release ip:%s", epInfo.IPAddresses[i].IP.String()))
+		}
+		err = plugin.ipamInvoker.Delete(addresses, nwCfg, args, nwInfo.Options)
+		if err != nil {
+			return plugin.RetriableError(fmt.Errorf("failed to release address: %w", err))
 		}
 		err = plugin.ipamInvoker.Delete(addresses, nwCfg, args, nwInfo.Options)
 		if err != nil {
