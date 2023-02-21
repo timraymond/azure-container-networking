@@ -848,10 +848,12 @@ func TestPublishNCBadBody(t *testing.T) {
 }
 
 func TestPublishNC401(t *testing.T) {
+	expNMAStatus := http.StatusUnauthorized
+
 	mnma := &fakes.NMAgentClientFake{
 		PutNetworkContainerF: func(_ context.Context, _ *nmagent.PutNetworkContainerRequest) error {
 			return nmagent.Error{
-				Code:   http.StatusUnauthorized,
+				Code:   expNMAStatus,
 				Source: "nmagent",
 			}
 		},
@@ -903,16 +905,25 @@ func TestPublishNC401(t *testing.T) {
 		t.Fatal("unexpected error decoding JSON: err:", err)
 	}
 
-	expCode := types.NetworkContainerPublishFailed
+	expCode := types.Success
 	gotCode := resp.Response.ReturnCode
 	if expCode != gotCode {
 		t.Error("unexpected return code: exp:", expCode, "got:", gotCode)
 	}
 
-	expBodyStatus := http.StatusUnauthorized
+	// PublishStatusCode is poorly-named. It's really the status provided by
+	// Wireserver. In this case, because the (simulated) request was successful,
+	// this is also expected to be a 200.
+	expBodyStatus := http.StatusOK
 	gotBodyStatus := resp.PublishStatusCode
 	if expBodyStatus != gotBodyStatus {
 		t.Error("unexpected publish body status: exp:", expBodyStatus, "got:", gotBodyStatus)
+	}
+
+	expMessage := "" // no message because it's a "success"
+	gotMessage := resp.Response.Message
+	if expMessage != gotMessage {
+		t.Error("unexpected message: exp:", expMessage, "got:", gotMessage)
 	}
 
 	// ensure that the PublishResponseBody is JSON
@@ -922,9 +933,8 @@ func TestPublishNC401(t *testing.T) {
 		t.Fatal("unexpected error unmarshaling PublishResponseBody: err:", err)
 	}
 
-	// ensure that the PublishResponseBody also contains the embedded status from
-	// NMAgent
-	expStatusStr := strconv.Itoa(expBodyStatus)
+	// this is really where the status from NMAgent is expected to be.
+	expStatusStr := strconv.Itoa(expNMAStatus)
 	if gotStatusStr, ok := pubResp["httpStatusCode"]; ok {
 		if gotStatusStr != expStatusStr {
 			t.Fatalf("expected PublishResponseBody's httpStatusCode to be %q, but was %q\n", expStatusStr, gotStatusStr)

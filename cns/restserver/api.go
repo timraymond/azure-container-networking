@@ -1167,12 +1167,12 @@ func (service *HTTPRestService) publishNetworkContainer(w http.ResponseWriter, r
 		returnCode      types.ResponseCode
 		returnMessage   string
 		publishErrorStr string
-		isNetworkJoined bool
 	)
 
 	// publishing is assumed to succeed unless some other error handling sets it
 	// otherwise
-	publishStatusCode := http.StatusOK
+	wireserverStatus := http.StatusOK
+	nmaStatus := http.StatusOK
 
 	err := service.Listener.Decode(w, r, &req)
 
@@ -1213,39 +1213,34 @@ func (service *HTTPRestService) publishNetworkContainer(w http.ResponseWriter, r
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPost:
-		// Join the network
-		// Please refactor this
-		// do not reuse the below variable between network join and publish
-		// nolint:bodyclose // existing code needs refactoring
-		err = service.joinNetwork(ctx, req.NetworkID)
-		if err != nil {
-			returnMessage = err.Error()
-			returnCode = types.NetworkJoinFailed
-			publishErrorStr = err.Error()
-
-			var nmaErr nmagent.Error
-			if errors.As(err, &nmaErr) {
-				publishStatusCode = nmaErr.StatusCode()
-			}
-		} else {
-			isNetworkJoined = true
-		}
-
-		if isNetworkJoined {
-			// Publish Network Container
-			returnMessage, returnCode, publishStatusCode = service.doPublish(ctx, req, ncParameters)
-		}
-
-	default:
+	if r.Method != http.MethodPost {
 		returnMessage = "PublishNetworkContainer API expects a POST"
 		returnCode = types.UnsupportedVerb
 	}
 
+	// Join the network
+	err = service.joinNetwork(ctx, req.NetworkID)
+	if err != nil {
+		returnMessage = err.Error()
+		returnCode = types.NetworkJoinFailed
+		publishErrorStr = err.Error()
+
+		var nmaErr nmagent.Error
+		if errors.As(err, &nmaErr) {
+			nmaStatus = nmaErr.StatusCode()
+		}
+	}
+
+	returnMessage, returnCode, nmaStatus = service.doPublish(ctx, req, ncParameters)
+
+	if nmaStatus == http.StatusUnauthorized {
+		returnCode = types.Success
+		returnMessage = ""
+	}
+
 	// create a synthetic response from NMAgent so that clients that previously
 	// relied on its presence can continue to do so.
-	publishResponseBody := fmt.Sprintf(`{"httpStatusCode":"%d"}`, publishStatusCode)
+	publishResponseBody := fmt.Sprintf(`{"httpStatusCode":"%d"}`, nmaStatus)
 
 	response := cns.PublishNetworkContainerResponse{
 		Response: cns.Response{
@@ -1253,7 +1248,7 @@ func (service *HTTPRestService) publishNetworkContainer(w http.ResponseWriter, r
 			Message:    returnMessage,
 		},
 		PublishErrorStr:     publishErrorStr,
-		PublishStatusCode:   publishStatusCode,
+		PublishStatusCode:   wireserverStatus,
 		PublishResponseBody: []byte(publishResponseBody),
 	}
 
