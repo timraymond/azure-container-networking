@@ -35,6 +35,7 @@ import (
 	"github.com/Azure/azure-container-networking/cns/logger"
 	"github.com/Azure/azure-container-networking/cns/multitenantcontroller"
 	"github.com/Azure/azure-container-networking/cns/multitenantcontroller/multitenantoperator"
+	"github.com/Azure/azure-container-networking/cns/nmagent"
 	"github.com/Azure/azure-container-networking/cns/restserver"
 	cnstypes "github.com/Azure/azure-container-networking/cns/types"
 	"github.com/Azure/azure-container-networking/cns/wireserver"
@@ -45,7 +46,7 @@ import (
 	"github.com/Azure/azure-container-networking/crd/nodenetworkconfig/api/v1alpha"
 	"github.com/Azure/azure-container-networking/fs"
 	"github.com/Azure/azure-container-networking/log"
-	"github.com/Azure/azure-container-networking/nmagent"
+	nma "github.com/Azure/azure-container-networking/nmagent"
 	"github.com/Azure/azure-container-networking/platform"
 	"github.com/Azure/azure-container-networking/processlock"
 	localtls "github.com/Azure/azure-container-networking/server/tls"
@@ -336,14 +337,8 @@ func printVersion() {
 	fmt.Printf("Version %v\n", version)
 }
 
-// NodeInterrogator is functionality necessary to read information about nodes.
-// It is intended to be strictly read-only.
-type NodeInterrogator interface {
-	SupportedAPIs(context.Context) ([]string, error)
-}
-
 // RegisterNode - Tries to register node with DNC when CNS is started in managed DNC mode
-func registerNode(httpc *http.Client, httpRestService cns.HTTPService, dncEP, infraVnet, nodeID string, ni NodeInterrogator) error {
+func registerNode(httpc *http.Client, httpRestService cns.HTTPService, dncEP, infraVnet, nodeID string) error {
 	logger.Printf("[Azure CNS] Registering node %s with Infrastructure Network: %s PrivateEndpoint: %s", nodeID, infraVnet, dncEP)
 
 	var (
@@ -353,7 +348,7 @@ func registerNode(httpc *http.Client, httpRestService cns.HTTPService, dncEP, in
 	)
 
 	nodeRegisterRequest.NumCores = numCPU
-	supportedApis, retErr := ni.SupportedAPIs(context.TODO())
+	supportedApis, retErr := nmagent.GetNmAgentSupportedApis(httpc, "")
 
 	if retErr != nil {
 		logger.Errorf("[Azure CNS] Failed to retrieve SupportedApis from NMagent of node %s with Infrastructure Network: %s PrivateEndpoint: %s",
@@ -542,16 +537,20 @@ func main() {
 	z, _ := zap.NewProduction()
 	go healthserver.Start(z, cnsconfig.MetricsBindAddress)
 
-	nmaConfig, err := nmagent.NewConfig(cnsconfig.WireserverIP)
+	nmaConfig, err := nma.NewConfig(cnsconfig.WireserverIP)
 	if err != nil {
 		logger.Errorf("[Azure CNS] Failed to produce NMAgent config from the supplied wireserver ip: %v", err)
 		return
 	}
 
-	nmaClient, err := nmagent.NewClient(nmaConfig)
+	nmaClient, err := nma.NewClient(nmaConfig)
 	if err != nil {
 		logger.Errorf("[Azure CNS] Failed to start nmagent client due to error: %v", err)
 		return
+	}
+
+	if cnsconfig.WireserverIP != "" {
+		nmagent.WireserverIP = cnsconfig.WireserverIP
 	}
 
 	homeAzMonitor := restserver.NewHomeAzMonitor(nmaClient, time.Duration(cnsconfig.PopulateHomeAzCacheRetryIntervalSecs)*time.Second)
@@ -618,6 +617,12 @@ func main() {
 		return
 	}
 
+	nmaclient, err := nmagent.NewClient("")
+	if err != nil {
+		logger.Errorf("Failed to start nmagent client due to error %v", err)
+		return
+	}
+
 	// Initialize endpoint state store if cns is managing endpoint state.
 	if cnsconfig.ManageEndpointState {
 		log.Printf("[Azure CNS] Configured to manage endpoints state")
@@ -644,7 +649,7 @@ func main() {
 
 	// Create CNS object.
 
-	httpRestService, err := restserver.NewHTTPRestService(&config, &wireserver.Client{HTTPClient: &http.Client{}}, nmaClient,
+	httpRestService, err := restserver.NewHTTPRestService(&config, &wireserver.Client{HTTPClient: &http.Client{}}, nmaclient,
 		endpointStateStore, conflistGenerator, homeAzMonitor)
 	if err != nil {
 		logger.Errorf("Failed to create CNS object, err:%v.\n", err)
@@ -783,7 +788,7 @@ func main() {
 		httpRestService.SetOption(acn.OptInfrastructureNetworkID, infravnet)
 		httpRestService.SetOption(acn.OptNodeID, nodeID)
 
-		registerErr := registerNode(acn.GetHttpClient(), httpRestService, privateEndpoint, infravnet, nodeID, nmaClient)
+		registerErr := registerNode(acn.GetHttpClient(), httpRestService, privateEndpoint, infravnet, nodeID)
 		if registerErr != nil {
 			logger.Errorf("[Azure CNS] Resgistering Node failed with error: %v PrivateEndpoint: %s InfrastructureNetworkID: %s NodeID: %s",
 				registerErr,

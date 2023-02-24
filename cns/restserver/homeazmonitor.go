@@ -20,16 +20,22 @@ const (
 	homeAzCacheKey   = "HomeAz"
 )
 
+type internalNMAgentClient interface {
+	GetNCVersionList(ctx context.Context) (nmagent.NCVersionList, error)
+	SupportedAPIs(context.Context) ([]string, error)
+	GetHomeAz(context.Context) (nmagent.AzResponse, error)
+}
+
 type HomeAzMonitor struct {
-	nmagentClient
-	values *cache.Cache
+	nmagentClient internalNMAgentClient
+	values        *cache.Cache
 	// channel used as signal to end of the goroutine for populating home az cache
 	closing                  chan struct{}
 	cacheRefreshIntervalSecs time.Duration
 }
 
 // NewHomeAzMonitor creates a new HomeAzMonitor object
-func NewHomeAzMonitor(client nmagentClient, cacheRefreshIntervalSecs time.Duration) *HomeAzMonitor {
+func NewHomeAzMonitor(client internalNMAgentClient, cacheRefreshIntervalSecs time.Duration) *HomeAzMonitor {
 	return &HomeAzMonitor{
 		nmagentClient:            client,
 		cacheRefreshIntervalSecs: cacheRefreshIntervalSecs,
@@ -93,7 +99,7 @@ func (h *HomeAzMonitor) refresh() {
 
 // Populate makes call to nmagent to retrieve home az if getHomeAz api is supported by nmagent
 func (h *HomeAzMonitor) Populate(ctx context.Context) {
-	supportedApis, err := h.SupportedAPIs(ctx)
+	supportedApis, err := h.nmagentClient.SupportedAPIs(ctx)
 	if err != nil {
 		returnMessage := fmt.Sprintf("[HomeAzMonitor] failed to query nmagent's supported apis, %v", err)
 		returnCode := types.NmAgentSupportedApisError

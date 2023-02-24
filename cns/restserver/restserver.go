@@ -12,12 +12,12 @@ import (
 	"github.com/Azure/azure-container-networking/cns/ipamclient"
 	"github.com/Azure/azure-container-networking/cns/logger"
 	"github.com/Azure/azure-container-networking/cns/networkcontainers"
+	"github.com/Azure/azure-container-networking/cns/nmagent"
 	"github.com/Azure/azure-container-networking/cns/routes"
 	"github.com/Azure/azure-container-networking/cns/types"
 	"github.com/Azure/azure-container-networking/cns/types/bounded"
 	"github.com/Azure/azure-container-networking/cns/wireserver"
 	acn "github.com/Azure/azure-container-networking/common"
-	nma "github.com/Azure/azure-container-networking/nmagent"
 	"github.com/Azure/azure-container-networking/store"
 	"github.com/pkg/errors"
 )
@@ -31,6 +31,8 @@ import (
 var (
 	// Named Lock for accessing different states in httpRestServiceState
 	namedLock = acn.InitNamedLock()
+	// map of NC to their respective NMA getVersion URLs
+	ncVersionURLs sync.Map
 )
 
 type interfaceGetter interface {
@@ -38,12 +40,7 @@ type interfaceGetter interface {
 }
 
 type nmagentClient interface {
-	PutNetworkContainer(context.Context, *nma.PutNetworkContainerRequest) error
-	DeleteNetworkContainer(context.Context, nma.DeleteContainerRequest) error
-	JoinNetwork(context.Context, nma.JoinNetworkRequest) error
-	SupportedAPIs(context.Context) ([]string, error)
-	GetNCVersionList(context.Context) (nma.NCVersionList, error)
-	GetHomeAz(context.Context) (nma.AzResponse, error)
+	GetNCVersionList(ctx context.Context) (*nmagent.NetworkContainerListResponse, error)
 }
 
 // HTTPRestService represents http listener for CNS - Container Networking Service.
