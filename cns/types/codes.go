@@ -42,6 +42,7 @@ const (
 	NilEndpointStateStore                  ResponseCode = 40
 	NmAgentInternalServerError             ResponseCode = 41
 	StatusUnauthorized                     ResponseCode = 42
+	InvalidAPIWithMultipleNCs			   ResponseCode = 43
 	UnexpectedError                        ResponseCode = 99
 )
 
@@ -60,6 +61,8 @@ func (c ResponseCode) String() string {
 		return "FailedToAllocateIpConfig"
 	case InconsistentIPConfigState:
 		return "InconsistentIPConfigState"
+	case InvalidAPIWithMultipleNCs:
+		return "InvalidAPIWithMultipleNCs"
 	case InvalidParameter:
 		return "InvalidParameter"
 	case InvalidPrimaryIPConfig:
