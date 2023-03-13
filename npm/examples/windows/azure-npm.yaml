@@ -83,7 +83,7 @@ spec:
       hostNetwork: true
       containers:
         - name: azure-npm
-          image: mcr.microsoft.com/containernetworking/azure-npm:v1.4.29
+          image: mcr.microsoft.com/containernetworking/azure-npm:v1.4.45
           command: ["powershell.exe"]
           args:
             [
@@ -108,6 +108,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: NPM_CONFIG
               value: .\\etc\\azure-npm\\azure-npm.json
+            - name: PATH
+              value: '%CONTAINER_SANDBOX_MOUNT_POINT%\Windows\System32\WindowsPowershell\v1.0\'
           volumeMounts:
             - name: azure-npm-config
               mountPath: .\\etc\\azure-npm

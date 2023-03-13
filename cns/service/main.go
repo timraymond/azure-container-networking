@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -43,7 +44,7 @@ import (
 	"github.com/Azure/azure-container-networking/crd/clustersubnetstate/api/v1alpha1"
 	"github.com/Azure/azure-container-networking/crd/nodenetworkconfig"
 	"github.com/Azure/azure-container-networking/crd/nodenetworkconfig/api/v1alpha"
-	"github.com/Azure/azure-container-networking/fs"
+	acnfs "github.com/Azure/azure-container-networking/internal/fs"
 	"github.com/Azure/azure-container-networking/log"
 	"github.com/Azure/azure-container-networking/nmagent"
 	"github.com/Azure/azure-container-networking/platform"
@@ -78,6 +79,9 @@ const (
 	// 720 * acn.FiveSeconds sec sleeps = 1Hr
 	maxRetryNodeRegister = 720
 	initCNSInitalDelay   = 10 * time.Second
+
+	// envVarEnableCNIConflistGeneration enables cni conflist generation if set (value doesn't matter)
+	envVarEnableCNIConflistGeneration = "CNS_ENABLE_CNI_CONFLIST_GENERATION"
 )
 
 type cniConflistScenario string
@@ -287,6 +291,20 @@ var args = acn.ArgumentList{
 		Type:         "bool",
 		DefaultValue: false,
 	},
+	{
+		Name:         acn.OptCNIConflistFilepath,
+		Shorthand:    acn.OptCNIConflistFilepathAlias,
+		Description:  "Filepath to write CNI conflist when CNI conflist generation is enabled",
+		Type:         "string",
+		DefaultValue: "",
+	},
+	{
+		Name:         acn.OptCNIConflistScenario,
+		Shorthand:    acn.OptCNIConflistScenarioAlias,
+		Description:  "Scenario to generate CNI conflist for",
+		Type:         "string",
+		DefaultValue: "",
+	},
 }
 
 // init() is executed before main() whenever this package is imported
@@ -446,6 +464,8 @@ func main() {
 	clientDebugArg := acn.GetArg(acn.OptDebugArg).(string)
 	cmdLineConfigPath := acn.GetArg(acn.OptCNSConfigPath).(string)
 	telemetryDaemonEnabled := acn.GetArg(acn.OptTelemetryService).(bool)
+	cniConflistFilepathArg := acn.GetArg(acn.OptCNIConflistFilepath).(string)
+	cniConflistScenarioArg := acn.GetArg(acn.OptCNIConflistScenario).(string)
 
 	if vers {
 		printVersion()
@@ -480,24 +500,40 @@ func main() {
 		logger.Errorf("[Azure CNS] Cannot disable telemetry via cmdline. Update cns_config.json to disable telemetry.")
 	}
 
-	logger.Printf("[Azure CNS] cmdLineConfigPath: %s", cmdLineConfigPath)
 	cnsconfig, err := configuration.ReadConfig(cmdLineConfigPath)
 	if err != nil {
-		logger.Errorf("[Azure CNS] Error reading cns config: %v", err)
+		if errors.Is(err, fs.ErrNotExist) {
+			logger.Warnf("config file does not exist, using default")
+			cnsconfig = &configuration.CNSConfig{}
+		} else {
+			logger.Errorf("fatal: failed to read cns config: %v", err)
+			os.Exit(1)
+		}
 	}
-
 	configuration.SetCNSConfigDefaults(cnsconfig)
-	logger.Printf("[Azure CNS] Read config :%+v", cnsconfig)
+	logger.Printf("[Azure CNS] Using config: %+v", cnsconfig)
 
+	_, envEnableConflistGeneration := os.LookupEnv(envVarEnableCNIConflistGeneration)
 	var conflistGenerator restserver.CNIConflistGenerator
-	if cnsconfig.EnableCNIConflistGeneration {
-		writer, newWriterErr := fs.NewAtomicWriter(cnsconfig.CNIConflistFilepath)
+	if cnsconfig.EnableCNIConflistGeneration || envEnableConflistGeneration {
+		conflistFilepath := cnsconfig.CNIConflistFilepath
+		if cniConflistFilepathArg != "" {
+			// allow the filepath to get overidden by command line arg
+			conflistFilepath = cniConflistFilepathArg
+		}
+		writer, newWriterErr := acnfs.NewAtomicWriter(conflistFilepath)
 		if newWriterErr != nil {
 			logger.Errorf("unable to create atomic writer to generate cni conflist: %v", newWriterErr)
 			os.Exit(1)
 		}
 
-		switch scenario := cniConflistScenario(cnsconfig.CNIConflistScenario); scenario {
+		// allow the scenario to get overridden by command line arg
+		scenarioString := cnsconfig.CNIConflistScenario
+		if cniConflistScenarioArg != "" {
+			scenarioString = cniConflistScenarioArg
+		}
+
+		switch scenario := cniConflistScenario(scenarioString); scenario {
 		case scenarioV4Overlay:
 			conflistGenerator = &cniconflist.V4OverlayGenerator{Writer: writer}
 		default:
@@ -610,9 +646,12 @@ func main() {
 		}
 	}
 
-	// Create CNS object.
+	wsProxy := wireserver.Proxy{
+		Host:       cnsconfig.WireserverIP,
+		HTTPClient: &http.Client{},
+	}
 
-	httpRestService, err := restserver.NewHTTPRestService(&config, &wireserver.Client{HTTPClient: &http.Client{}}, nmaClient,
+	httpRestService, err := restserver.NewHTTPRestService(&config, &wireserver.Client{HTTPClient: &http.Client{}}, &wsProxy, nmaClient,
 		endpointStateStore, conflistGenerator, homeAzMonitor)
 	if err != nil {
 		logger.Errorf("Failed to create CNS object, err:%v.\n", err)
@@ -696,6 +735,13 @@ func main() {
 				cns.GlobalPodInfoScheme = cns.InterfaceIDPodInfoScheme
 			}
 		}
+		// If cns manageendpointstate is true, then cns maintains its own state and reconciles from it.
+		// in this case, cns maintains state with containerid as key and so in-memory cache can lookup
+		// and update based on container id.
+		if cnsconfig.ManageEndpointState {
+			cns.GlobalPodInfoScheme = cns.InterfaceIDPodInfoScheme
+		}
+
 		logger.Printf("Set GlobalPodInfoScheme %v (InitializeFromCNI=%t)", cns.GlobalPodInfoScheme, cnsconfig.InitializeFromCNI)
 
 		err = InitializeCRDState(rootCtx, httpRestService, cnsconfig)
@@ -703,7 +749,6 @@ func main() {
 			logger.Errorf("Failed to start CRD Controller, err:%v.\n", err)
 			return
 		}
-
 	}
 
 	// Initialize multi-tenant controller if the CNS is running in MultiTenantCRD mode.
